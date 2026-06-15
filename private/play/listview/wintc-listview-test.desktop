@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=List View Sample (WinTC Test)
+Comment=WinTC list view test program.
+Exec=wintc-listview-test
+Icon=wintc-listview-test
+Terminal=false
+StartupNotify=false
+Type=Application
+Categories=Utility;GTK;X-WinTC-Dev;

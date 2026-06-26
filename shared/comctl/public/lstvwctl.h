@@ -28,7 +28,7 @@ G_DECLARE_FINAL_TYPE(
     wintc_ctl_list_view,
     WINTC,
     CTL_LIST_VIEW,
-    GtkWidget
+    GtkDrawingArea
 )
 
 //

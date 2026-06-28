@@ -79,6 +79,7 @@ struct _WinTCCtlListView
     GtkDrawingArea __parent__;
 
     GList* list_icons;
+    GList* list_selected;
 
     // UI State
     //
@@ -167,15 +168,6 @@ static gboolean wintc_ctl_list_view_draw(
 
         // Icon itself
         //
-        cairo_save(cr);
-        cairo_rectangle(
-            cr,
-            (gdouble) large_icon->x,
-            (gdouble) large_icon->y,
-            32.0f,
-            32.0f
-        );
-        cairo_clip(cr);
         gdk_cairo_set_source_pixbuf(
             cr,
             large_icon->icon,
@@ -183,7 +175,7 @@ static gboolean wintc_ctl_list_view_draw(
             (gdouble) large_icon->y
         );
         cairo_paint(cr);
-        cairo_restore(cr);
+
 
         // Icon label
         //
@@ -228,6 +220,38 @@ static gboolean wintc_ctl_list_view_draw(
         pango_cairo_show_layout(cr, layout);
 
         g_object_unref(layout);
+    }
+
+    // Paint selected icon masks
+    //
+    for (GList* iter = list_view->list_selected; iter; iter = iter->next)
+    {
+        WinTCCtlListViewIcon* large_icon =
+            (WinTCCtlListViewIcon*) iter->data;
+
+        cairo_surface_t* surface_icon = NULL;
+
+        gdk_cairo_set_source_pixbuf(
+            cr,
+            large_icon->icon,
+            (gdouble) large_icon->x,
+            (gdouble) large_icon->y
+        );
+
+        cairo_pattern_get_surface(
+            cairo_get_source(cr),
+            &surface_icon
+        );
+
+        cairo_save(cr);
+        cairo_set_source_rgba(cr, 0.0f, 0.0f, 0.8f, 0.5f);
+        cairo_mask_surface(
+            cr,
+            surface_icon,
+            (gdouble) large_icon->x,
+            (gdouble) large_icon->y
+        );
+        cairo_restore(cr);
     }
 
     // Draw selection rect if needed
@@ -465,9 +489,27 @@ static gboolean on_list_view_button_press_event(
         {
             WINTC_LOG_DEBUG("Hit!");
 
+            if (
+                !list_view->list_selected ||
+                !g_list_find(
+                    list_view->list_selected,
+                    large_icon
+                )
+            )
+            {
+                g_clear_list(&(list_view->list_selected), NULL);
+
+                list_view->list_selected =
+                    g_list_append(
+                        list_view->list_selected,
+                        large_icon
+                    );
+            }
+
             list_view->hit_icon = large_icon;
             list_view->hit_x    = e->x - large_icon->x;
             list_view->hit_y    = e->y - large_icon->y;
+
 
             break;
         }
@@ -478,6 +520,8 @@ static gboolean on_list_view_button_press_event(
     //
     if (!(list_view->hit_icon))
     {
+        g_clear_list(&(list_view->list_selected), NULL);
+
         list_view->hit_x = e->x;
         list_view->hit_y = e->y;
     }

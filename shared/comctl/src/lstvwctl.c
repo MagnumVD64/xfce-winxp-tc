@@ -179,21 +179,32 @@ static gboolean wintc_ctl_list_view_draw(
 
         // Icon label
         //
-        PangoContext* ctx    = gtk_widget_get_pango_context(widget);
-        PangoLayout*  layout = pango_layout_new(ctx);
+        PangoContext*  ctx    = gtk_widget_get_pango_context(widget);
+        PangoRectangle extents;
+        gdouble        label_x;
+        PangoLayout*   layout = pango_layout_new(ctx);
 
         pango_layout_set_text(layout, large_icon->text, -1);
 
+        pango_layout_get_pixel_extents(
+            layout,
+            NULL,
+            &extents
+        );
+
         cairo_save(cr);
         cairo_set_source_rgba(cr, 0.0f, 0.0f, 0.0f, 1.0f);
+
+        label_x =
+            (gdouble) (large_icon->x + 16) - (extents.width / 2);
 
         for (gint i = 0; i < LABEL_TEXT_SHADOW_INTENSITY; i++)
         {
             cairo_mask_surface(
                 cr,
                 large_icon->surface_text_shadow,
-                (gdouble) large_icon->x - LABEL_TEXT_SHADOW_OFFSET,
-                (gdouble) large_icon->y + 49 - LABEL_TEXT_SHADOW_OFFSET
+                label_x - LABEL_TEXT_SHADOW_OFFSET,
+                (gdouble) large_icon->y + 35 - LABEL_TEXT_SHADOW_OFFSET
             );
         }
 
@@ -202,8 +213,8 @@ static gboolean wintc_ctl_list_view_draw(
         cairo_set_source_rgb(cr, 1.0f, 1.0f, 1.0f);
         cairo_move_to(
             cr,
-            (gdouble) large_icon->x,
-            (gdouble) large_icon->y + 48
+            label_x,
+            (gdouble) large_icon->y + 35
         );
 
         pango_cairo_show_layout(cr, layout);

@@ -12,6 +12,9 @@
 
 #define HITBOX_LARGE_ICON 32
 
+#define IS_RECT_SELECTING(w) \
+    (w->hit_started && !w->hit_icon)
+
 //
 // PRIVATE STRUCTURES
 //
@@ -82,6 +85,11 @@ struct _WinTCCtlListView
     WinTCCtlListViewIcon* hit_icon;
     gint                  hit_x;
     gint                  hit_y;
+
+    gint last_motion_x;
+    gint last_motion_y;
+
+    gboolean hit_started;
 };
 
 //
@@ -220,6 +228,31 @@ static gboolean wintc_ctl_list_view_draw(
         pango_cairo_show_layout(cr, layout);
 
         g_object_unref(layout);
+    }
+
+    // Draw selection rect if needed
+    //
+    if (IS_RECT_SELECTING(list_view))
+    {
+        const gdouble s_dashes[] = { 1.0f };
+
+        cairo_rectangle(
+            cr,
+            (gdouble) list_view->hit_x,
+            (gdouble) list_view->hit_y,
+            (gdouble) list_view->last_motion_x - list_view->hit_x,
+            (gdouble) list_view->last_motion_y - list_view->hit_y
+        );
+
+        cairo_set_dash(
+            cr,
+            s_dashes,
+            1,
+            0.0f
+        );
+        cairo_set_operator(cr, CAIRO_OPERATOR_XOR);
+
+        cairo_stroke(cr);
     }
 
     return FALSE;
@@ -402,7 +435,7 @@ static gboolean on_list_view_button_press_event(
     GdkEventButton*   e         = (GdkEventButton*) event;
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
 
-    WINTC_LOG_DEBUG("Test");
+    list_view->hit_started = TRUE;
 
     // Crude hit box search
     //
@@ -440,6 +473,15 @@ static gboolean on_list_view_button_press_event(
         }
     }
 
+    // If nothing was hit - set the hit to the mouse pos for the selection
+    // box to start from
+    //
+    if (!(list_view->hit_icon))
+    {
+        list_view->hit_x = e->x;
+        list_view->hit_y = e->y;
+    }
+
     return TRUE;
 }
 
@@ -451,7 +493,10 @@ static gboolean on_list_view_button_release_event(
 {
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
 
-    list_view->hit_icon = NULL;
+    list_view->hit_icon    = NULL;
+    list_view->hit_started = FALSE;
+
+    gtk_widget_queue_draw(widget);
 
     return TRUE;
 }
@@ -462,16 +507,17 @@ static gboolean on_list_view_motion_notify_event(
     WINTC_UNUSED(gpointer user_data)
 )
 {
-    GdkEventMotion*  e         = (GdkEventMotion*) event;
+    GdkEventMotion*   e         = (GdkEventMotion*) event;
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
 
-    if (!(list_view->hit_icon))
-    {
-        return TRUE;
-    }
+    list_view->last_motion_x = e->x;
+    list_view->last_motion_y = e->y;
 
-    list_view->hit_icon->x = e->x - list_view->hit_x;
-    list_view->hit_icon->y = e->y - list_view->hit_y;
+    if (list_view->hit_icon)
+    {
+        list_view->hit_icon->x = e->x - list_view->hit_x;
+        list_view->hit_icon->y = e->y - list_view->hit_y;
+    }
 
     gtk_widget_queue_draw(widget);
 

@@ -69,6 +69,8 @@ add_library(
     public/location.h
     src/marshal.c
     public/marshal.h
+    src/math.c
+    public/math.h
     src/memory.c
     public/memory.h
     src/menu.c

@@ -18,6 +18,7 @@
 #include "@LIB_HEADER_DIR@/listbox.h"
 #include "@LIB_HEADER_DIR@/location.h"
 #include "@LIB_HEADER_DIR@/marshal.h"
+#include "@LIB_HEADER_DIR@/math.h"
 #include "@LIB_HEADER_DIR@/memory.h"
 #include "@LIB_HEADER_DIR@/menu.h"
 #include "@LIB_HEADER_DIR@/msgbox.h"

@@ -593,6 +593,8 @@ static gboolean on_list_view_motion_notify_event(
         rect.width  = e->x - rect.x;
         rect.height = e->y - rect.y;
 
+        wintc_rectangle_normalize(&rect);
+
         g_clear_list(&(list_view->list_selected), NULL);
 
         for (GList* iter = list_view->list_icons; iter; iter = iter->next)

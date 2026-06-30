@@ -24,8 +24,9 @@ typedef struct _WinTCCtlListViewIcon
     //
     GdkPixbuf* icon;
     gchar*     text;
-    gint       x;
-    gint       y;
+
+    GdkRectangle hitbox_icon;
+    GdkRectangle hitbox_label;
 
     // Drawing cache
     //
@@ -45,9 +46,10 @@ static void wintc_ctl_list_view_create_large_icon(
     const gchar*      icon_name,
     const gchar*      text
 );
-static void wintc_ctl_list_view_update_icon_text_shadow(
+static void wintc_ctl_list_view_set_icon_text(
     WinTCCtlListView*     list_view,
-    WinTCCtlListViewIcon* icon
+    WinTCCtlListViewIcon* icon,
+    const gchar*          text
 );
 
 static gboolean on_list_view_button_press_event(
@@ -171,40 +173,31 @@ static gboolean wintc_ctl_list_view_draw(
         gdk_cairo_set_source_pixbuf(
             cr,
             large_icon->icon,
-            (gdouble) large_icon->x,
-            (gdouble) large_icon->y
+            (gdouble) large_icon->hitbox_icon.x,
+            (gdouble) large_icon->hitbox_icon.y
         );
         cairo_paint(cr);
 
 
         // Icon label
         //
-        PangoContext*  ctx    = gtk_widget_get_pango_context(widget);
-        PangoRectangle extents;
-        gdouble        label_x;
-        PangoLayout*   layout = pango_layout_new(ctx);
+        PangoContext* ctx    = gtk_widget_get_pango_context(widget);
+        PangoLayout*  layout = pango_layout_new(ctx);
 
         pango_layout_set_text(layout, large_icon->text, -1);
 
-        pango_layout_get_pixel_extents(
-            layout,
-            NULL,
-            &extents
-        );
-
         cairo_save(cr);
         cairo_set_source_rgba(cr, 0.0f, 0.0f, 0.0f, 1.0f);
-
-        label_x =
-            (gdouble) (large_icon->x + 16) - (extents.width / 2);
 
         for (gint i = 0; i < LABEL_TEXT_SHADOW_INTENSITY; i++)
         {
             cairo_mask_surface(
                 cr,
                 large_icon->surface_text_shadow,
-                label_x - LABEL_TEXT_SHADOW_OFFSET,
-                (gdouble) large_icon->y + 35 - LABEL_TEXT_SHADOW_OFFSET
+                (gdouble) large_icon->hitbox_label.x -
+                    LABEL_TEXT_SHADOW_OFFSET,
+                (gdouble) large_icon->hitbox_label.y -
+                    LABEL_TEXT_SHADOW_OFFSET
             );
         }
 
@@ -213,8 +206,8 @@ static gboolean wintc_ctl_list_view_draw(
         cairo_set_source_rgb(cr, 1.0f, 1.0f, 1.0f);
         cairo_move_to(
             cr,
-            label_x,
-            (gdouble) large_icon->y + 35
+            large_icon->hitbox_label.x,
+            large_icon->hitbox_label.y
         );
 
         pango_cairo_show_layout(cr, layout);
@@ -234,8 +227,8 @@ static gboolean wintc_ctl_list_view_draw(
         gdk_cairo_set_source_pixbuf(
             cr,
             large_icon->icon,
-            (gdouble) large_icon->x,
-            (gdouble) large_icon->y
+            (gdouble) large_icon->hitbox_icon.x,
+            (gdouble) large_icon->hitbox_icon.y
         );
 
         cairo_pattern_get_surface(
@@ -248,8 +241,8 @@ static gboolean wintc_ctl_list_view_draw(
         cairo_mask_surface(
             cr,
             surface_icon,
-            (gdouble) large_icon->x,
-            (gdouble) large_icon->y
+            (gdouble) large_icon->hitbox_icon.x,
+            (gdouble) large_icon->hitbox_icon.y
         );
         cairo_restore(cr);
     }
@@ -304,11 +297,10 @@ static void wintc_ctl_list_view_create_large_icon(
     const gchar*      text
 )
 {
-    WinTCCtlListViewIcon* large_icon = g_new(WinTCCtlListViewIcon, 1);
+    WinTCCtlListViewIcon* large_icon = g_new0(WinTCCtlListViewIcon, 1);
 
-    large_icon->text = g_strdup(text);
-    large_icon->x    = 0;
-    large_icon->y    = 0;
+    large_icon->hitbox_icon.width  = HITBOX_LARGE_ICON;
+    large_icon->hitbox_icon.height = HITBOX_LARGE_ICON;
 
     large_icon->icon =
         gtk_icon_theme_load_icon(
@@ -319,28 +311,37 @@ static void wintc_ctl_list_view_create_large_icon(
             NULL
         );
 
+    wintc_ctl_list_view_set_icon_text(
+        list_view,
+        large_icon,
+        text
+    );
+
     list_view->list_icons =
         g_list_append(list_view->list_icons, large_icon);
 
-    large_icon->surface_text_shadow = NULL;
-    wintc_ctl_list_view_update_icon_text_shadow(list_view, large_icon);
 
     gtk_widget_queue_draw(GTK_WIDGET(list_view));
 }
 
-static void wintc_ctl_list_view_update_icon_text_shadow(
+static void wintc_ctl_list_view_set_icon_text(
     WinTCCtlListView*     list_view,
-    WinTCCtlListViewIcon* icon
+    WinTCCtlListViewIcon* icon,
+    const gchar*          text
 )
 {
     PangoContext* ctx = gtk_widget_get_pango_context(GTK_WIDGET(list_view));
+
+    g_free(icon->text);
+    icon->text = g_strdup(text);
 
     if (icon->surface_text_shadow)
     {
         cairo_surface_destroy(icon->surface_text_shadow);
     }
 
-    // Work out space required for the shadow
+    // Retrieve the extents for the text used for the shadow (ink extents) and
+    // hitbox (logical extents)
     //
     PangoRectangle extents;
     PangoLayout*   layout = pango_layout_new(ctx);
@@ -350,8 +351,14 @@ static void wintc_ctl_list_view_update_icon_text_shadow(
     pango_layout_get_pixel_extents(
         layout,
         &extents,
-        NULL
+        (PangoRectangle*) &(icon->hitbox_label)
     );
+
+    icon->hitbox_label.x =
+        icon->hitbox_icon.x +
+        (icon->hitbox_icon.width / 2) - (icon->hitbox_label.width / 2);
+    icon->hitbox_label.y =
+        icon->hitbox_icon.y + 35;
 
     // Render to a backing image surface
     //
@@ -472,18 +479,20 @@ static gboolean on_list_view_button_press_event(
             "Hit test x%d y%d against icon x%d y%d",
             (gint) e->x,
             (gint) e->y,
-            large_icon->x,
-            large_icon->y
+            large_icon->hitbox_icon.x,
+            large_icon->hitbox_icon.y
         );
 
         if (
-            (
-                e->x >= large_icon->x &&
-                e->x  < large_icon->x + HITBOX_LARGE_ICON
-            ) &&
-            (
-                e->y >= large_icon->y &&
-                e->y <  large_icon->y + HITBOX_LARGE_ICON
+            wintc_point_xy_in_rect(
+                (gint) e->x,
+                (gint) e->y,
+                &(large_icon->hitbox_icon)
+            ) ||
+            wintc_point_xy_in_rect(
+                (gint) e->x,
+                (gint) e->y,
+                &(large_icon->hitbox_label)
             )
         )
         {
@@ -507,9 +516,8 @@ static gboolean on_list_view_button_press_event(
             }
 
             list_view->hit_icon = large_icon;
-            list_view->hit_x    = e->x - large_icon->x;
-            list_view->hit_y    = e->y - large_icon->y;
-
+            list_view->hit_x    = e->x - large_icon->hitbox_icon.x;
+            list_view->hit_y    = e->y - large_icon->hitbox_icon.y;
 
             break;
         }
@@ -559,8 +567,15 @@ static gboolean on_list_view_motion_notify_event(
 
     if (list_view->hit_icon)
     {
-        list_view->hit_icon->x = e->x - list_view->hit_x;
-        list_view->hit_icon->y = e->y - list_view->hit_y;
+        list_view->hit_icon->hitbox_icon.x = e->x - list_view->hit_x;
+        list_view->hit_icon->hitbox_icon.y = e->y - list_view->hit_y;
+
+        list_view->hit_icon->hitbox_label.x =
+            list_view->hit_icon->hitbox_icon.x +
+            (list_view->hit_icon->hitbox_icon.width / 2) -
+            (list_view->hit_icon->hitbox_label.width / 2);
+        list_view->hit_icon->hitbox_label.y =
+            list_view->hit_icon->hitbox_icon.y + 35;
     }
 
     gtk_widget_queue_draw(widget);

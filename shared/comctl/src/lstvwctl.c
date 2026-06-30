@@ -144,6 +144,9 @@ static void wintc_ctl_list_view_init(
     );
 
     wintc_ctl_list_view_create_large_icon(self, "folder", "My Stuff");
+    wintc_ctl_list_view_create_large_icon(self, "computer", "My Computer");
+    wintc_ctl_list_view_create_large_icon(self, "folder-documents", "My Documents");
+    wintc_ctl_list_view_create_large_icon(self, "user-trash", "Recycle Bin");
 }
 
 //
@@ -268,6 +271,7 @@ static gboolean wintc_ctl_list_view_draw(
             0.0f
         );
         cairo_set_operator(cr, CAIRO_OPERATOR_XOR);
+        cairo_set_source_rgb(cr, 0.0f, 0.0f, 0.0f);
 
         cairo_stroke(cr);
     }
@@ -565,6 +569,9 @@ static gboolean on_list_view_motion_notify_event(
     list_view->last_motion_x = e->x;
     list_view->last_motion_y = e->y;
 
+    // Move selected icons if we have any, otherwise determine the items
+    // selected in the bounding rectangle
+    //
     if (list_view->hit_icon)
     {
         list_view->hit_icon->hitbox_icon.x = e->x - list_view->hit_x;
@@ -576,6 +583,46 @@ static gboolean on_list_view_motion_notify_event(
             (list_view->hit_icon->hitbox_label.width / 2);
         list_view->hit_icon->hitbox_label.y =
             list_view->hit_icon->hitbox_icon.y + 35;
+    }
+    else
+    {
+        GdkRectangle rect;
+
+        rect.x      = list_view->hit_x;
+        rect.y      = list_view->hit_y;
+        rect.width  = e->x - rect.x;
+        rect.height = e->y - rect.y;
+
+        g_clear_list(&(list_view->list_selected), NULL);
+
+        for (GList* iter = list_view->list_icons; iter; iter = iter->next)
+        {
+            WinTCCtlListViewIcon* large_icon =
+                (WinTCCtlListViewIcon*) iter->data;
+
+            if (
+                gdk_rectangle_intersect(
+                    &rect,
+                    &(large_icon->hitbox_icon),
+                    NULL
+                ) ||
+                gdk_rectangle_intersect(
+                    &rect,
+                    &(large_icon->hitbox_label),
+                    NULL
+                )
+            )
+            {
+                list_view->list_selected =
+                    g_list_prepend(
+                        list_view->list_selected,
+                        large_icon
+                    );
+            }
+        }
+
+        list_view->list_selected =
+            g_list_reverse(list_view->list_selected);
     }
 
     gtk_widget_queue_draw(widget);

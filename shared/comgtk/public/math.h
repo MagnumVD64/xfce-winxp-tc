@@ -36,4 +36,28 @@ gboolean wintc_point_xy_in_rect(
     GdkRectangle* rect
 );
 
+/**
+ * Determines if rectangles intersect, outputting the intersection rectangle
+ * if requested. Unlike gdk_rectangle_intersect, this handles negative sizes.
+ *
+ * @param src1 The first rectangle.
+ * @param src2 The second rectangle.
+ * @param dest (Optional) The output location for the intersection.
+ * @return True if the rectangles intersect.
+ */
+gboolean wintc_rectangle_intersect(
+    const GdkRectangle* src1,
+    const GdkRectangle* src2,
+    GdkRectangle*       dest
+);
+
+/**
+ * Ensures a rectangle is always top-left origin with positive size.
+ *
+ * @param rect The rectangle.
+ */
+void wintc_rectangle_normalize(
+    GdkRectangle* rect
+);
+
 #endif

@@ -12,9 +12,6 @@
 
 #define HITBOX_LARGE_ICON 32
 
-#define IS_RECT_SELECTING(w) \
-    (w->hit_started && !w->hit_icon)
-
 //
 // PRIVATE STRUCTURES
 //
@@ -167,6 +164,8 @@ static gboolean wintc_ctl_list_view_draw(
         WinTCCtlListViewIcon* large_icon =
             (WinTCCtlListViewIcon*) iter->data;
 
+        cairo_surface_t* surface_icon = NULL;
+
         // Icon itself
         //
         gdk_cairo_set_source_pixbuf(
@@ -175,8 +174,28 @@ static gboolean wintc_ctl_list_view_draw(
             (gdouble) large_icon->hitbox_icon.x,
             (gdouble) large_icon->hitbox_icon.y
         );
+
+        cairo_pattern_get_surface(
+            cairo_get_source(cr),
+            &surface_icon
+        );
+
         cairo_paint(cr);
 
+        // If the icon is selected, it needs the highlight
+        //
+        if (g_list_find(list_view->list_selected, large_icon))
+        {
+            cairo_save(cr);
+            cairo_set_source_rgba(cr, 0.0f, 0.0f, 0.8f, 0.5f);
+            cairo_mask_surface(
+                cr,
+                surface_icon,
+                (gdouble) large_icon->hitbox_icon.x,
+                (gdouble) large_icon->hitbox_icon.y
+            );
+            cairo_restore(cr);
+        }
 
         // Icon label
         //
@@ -214,62 +233,55 @@ static gboolean wintc_ctl_list_view_draw(
         g_object_unref(layout);
     }
 
-    // Paint selected icon masks
+    // Handle dragging ops...
     //
-    for (GList* iter = list_view->list_selected; iter; iter = iter->next)
+    if (list_view->hit_started)
     {
-        WinTCCtlListViewIcon* large_icon =
-            (WinTCCtlListViewIcon*) iter->data;
+        if (list_view->hit_icon) // Dragging icons
+        {
+            for (
+                GList* iter = list_view->list_selected;
+                iter;
+                iter = iter->next
+            )
+            {
+                WinTCCtlListViewIcon* large_icon =
+                    (WinTCCtlListViewIcon*) iter->data;
 
-        cairo_surface_t* surface_icon = NULL;
+                gdk_cairo_set_source_pixbuf(
+                    cr,
+                    large_icon->icon,
+                    (gdouble) large_icon->hitbox_icon.x +
+                        list_view->motion_rect.width,
+                    (gdouble) large_icon->hitbox_icon.y +
+                        list_view->motion_rect.height
+                );
+                cairo_paint_with_alpha(cr, 0.5f);
+            }
+        }
+        else // Selection box drag
+        {
+            const gdouble s_dashes[] = { 1.0f };
 
-        gdk_cairo_set_source_pixbuf(
-            cr,
-            large_icon->icon,
-            (gdouble) large_icon->hitbox_icon.x,
-            (gdouble) large_icon->hitbox_icon.y
-        );
+            cairo_rectangle(
+                cr,
+                (gdouble) list_view->motion_rect.x,
+                (gdouble) list_view->motion_rect.y,
+                (gdouble) list_view->motion_rect.width,
+                (gdouble) list_view->motion_rect.height
+            );
 
-        cairo_pattern_get_surface(
-            cairo_get_source(cr),
-            &surface_icon
-        );
+            cairo_set_dash(
+                cr,
+                s_dashes,
+                1,
+                0.0f
+            );
+            cairo_set_operator(cr, CAIRO_OPERATOR_XOR);
+            cairo_set_source_rgb(cr, 0.0f, 0.0f, 0.0f);
 
-        cairo_save(cr);
-        cairo_set_source_rgba(cr, 0.0f, 0.0f, 0.8f, 0.5f);
-        cairo_mask_surface(
-            cr,
-            surface_icon,
-            (gdouble) large_icon->hitbox_icon.x,
-            (gdouble) large_icon->hitbox_icon.y
-        );
-        cairo_restore(cr);
-    }
-
-    // Draw selection rect if needed
-    //
-    if (IS_RECT_SELECTING(list_view))
-    {
-        const gdouble s_dashes[] = { 1.0f };
-
-        cairo_rectangle(
-            cr,
-            (gdouble) list_view->motion_rect.x,
-            (gdouble) list_view->motion_rect.y,
-            (gdouble) list_view->motion_rect.width,
-            (gdouble) list_view->motion_rect.height
-        );
-
-        cairo_set_dash(
-            cr,
-            s_dashes,
-            1,
-            0.0f
-        );
-        cairo_set_operator(cr, CAIRO_OPERATOR_XOR);
-        cairo_set_source_rgb(cr, 0.0f, 0.0f, 0.0f);
-
-        cairo_stroke(cr);
+            cairo_stroke(cr);
+        }
     }
 
     return FALSE;

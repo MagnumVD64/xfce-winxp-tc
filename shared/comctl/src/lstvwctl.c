@@ -85,14 +85,10 @@ struct _WinTCCtlListView
 
     // UI State
     //
+    GdkRectangle motion_rect;
+
     WinTCCtlListViewIcon* hit_icon;
-    gint                  hit_x;
-    gint                  hit_y;
-
-    gint last_motion_x;
-    gint last_motion_y;
-
-    gboolean hit_started;
+    gboolean              hit_started;
 };
 
 //
@@ -258,10 +254,10 @@ static gboolean wintc_ctl_list_view_draw(
 
         cairo_rectangle(
             cr,
-            (gdouble) list_view->hit_x,
-            (gdouble) list_view->hit_y,
-            (gdouble) list_view->last_motion_x - list_view->hit_x,
-            (gdouble) list_view->last_motion_y - list_view->hit_y
+            (gdouble) list_view->motion_rect.x,
+            (gdouble) list_view->motion_rect.y,
+            (gdouble) list_view->motion_rect.width,
+            (gdouble) list_view->motion_rect.height
         );
 
         cairo_set_dash(
@@ -472,6 +468,9 @@ static gboolean on_list_view_button_press_event(
 
     list_view->hit_started = TRUE;
 
+    list_view->motion_rect.x = e->x;
+    list_view->motion_rect.y = e->y;
+
     // Crude hit box search
     //
     for (GList* iter = list_view->list_icons; iter; iter = iter->next)
@@ -520,22 +519,16 @@ static gboolean on_list_view_button_press_event(
             }
 
             list_view->hit_icon = large_icon;
-            list_view->hit_x    = e->x - large_icon->hitbox_icon.x;
-            list_view->hit_y    = e->y - large_icon->hitbox_icon.y;
 
             break;
         }
     }
 
-    // If nothing was hit - set the hit to the mouse pos for the selection
-    // box to start from
+    // If nothing was hit, clear the selection
     //
     if (!(list_view->hit_icon))
     {
         g_clear_list(&(list_view->list_selected), NULL);
-
-        list_view->hit_x = e->x;
-        list_view->hit_y = e->y;
     }
 
     return TRUE;
@@ -549,6 +542,23 @@ static gboolean on_list_view_button_release_event(
 {
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
 
+    // If we were dragging icons then commit the drag now
+    //
+    if (list_view->hit_icon)
+    {
+        for (GList* iter = list_view->list_selected; iter; iter = iter->next)
+        {
+            WinTCCtlListViewIcon* large_icon =
+                (WinTCCtlListViewIcon*) iter->data;
+
+            large_icon->hitbox_icon.x  += list_view->motion_rect.width;
+            large_icon->hitbox_icon.y  += list_view->motion_rect.height;
+            large_icon->hitbox_label.x += list_view->motion_rect.width;
+            large_icon->hitbox_label.y += list_view->motion_rect.height;
+        }
+    }
+
+    memset(&(list_view->motion_rect), 0, sizeof(GdkRectangle));
     list_view->hit_icon    = NULL;
     list_view->hit_started = FALSE;
 
@@ -566,41 +576,25 @@ static gboolean on_list_view_motion_notify_event(
     GdkEventMotion*   e         = (GdkEventMotion*) event;
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
 
-    list_view->last_motion_x = e->x;
-    list_view->last_motion_y = e->y;
+    list_view->motion_rect.width =
+        e->x - list_view->motion_rect.x;
+    list_view->motion_rect.height =
+        e->y - list_view->motion_rect.y;
 
-    // Move selected icons if we have any, otherwise determine the items
-    // selected in the bounding rectangle
+    // If no icon hit-tested, then this is a selection box dragging op
     //
-    if (list_view->hit_icon)
+    if (!(list_view->hit_icon))
     {
-        list_view->hit_icon->hitbox_icon.x = e->x - list_view->hit_x;
-        list_view->hit_icon->hitbox_icon.y = e->y - list_view->hit_y;
-
-        list_view->hit_icon->hitbox_label.x =
-            list_view->hit_icon->hitbox_icon.x +
-            (list_view->hit_icon->hitbox_icon.width / 2) -
-            (list_view->hit_icon->hitbox_label.width / 2);
-        list_view->hit_icon->hitbox_label.y =
-            list_view->hit_icon->hitbox_icon.y + 35;
-    }
-    else
-    {
-        GdkRectangle rect;
-
-        rect.x      = list_view->hit_x;
-        rect.y      = list_view->hit_y;
-        rect.width  = e->x - rect.x;
-        rect.height = e->y - rect.y;
-
-        wintc_rectangle_normalize(&rect);
-
         g_clear_list(&(list_view->list_selected), NULL);
 
         for (GList* iter = list_view->list_icons; iter; iter = iter->next)
         {
             WinTCCtlListViewIcon* large_icon =
                 (WinTCCtlListViewIcon*) iter->data;
+
+            GdkRectangle rect = list_view->motion_rect;
+
+            wintc_rectangle_normalize(&rect);
 
             if (
                 gdk_rectangle_intersect(

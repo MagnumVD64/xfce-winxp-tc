@@ -77,6 +77,16 @@ static gboolean on_list_view_button_release_event(
     GdkEvent*  event,
     gpointer   user_data
 );
+static gboolean on_list_view_enter_notify_event(
+    GtkWidget* widget,
+    GdkEvent*  event,
+    gpointer   user_data
+);
+static gboolean on_list_view_leave_notify_event(
+    GtkWidget* widget,
+    GdkEvent*  event,
+    gpointer   user_data
+);
 static gboolean on_list_view_motion_notify_event(
     GtkWidget* widget,
     GdkEvent*  event,
@@ -104,6 +114,7 @@ struct _WinTCCtlListView
 
     WinTCCtlListViewIcon* hit_icon;
     gboolean              hit_started;
+    gboolean              hit_in_widget;
 };
 
 //
@@ -130,9 +141,11 @@ static void wintc_ctl_list_view_init(
 {
     gtk_widget_add_events(
         GTK_WIDGET(self),
-        GDK_BUTTON_PRESS_MASK  |
-        GDK_BUTTON_MOTION_MASK |
-        GDK_BUTTON_RELEASE_MASK
+        GDK_BUTTON_PRESS_MASK   |
+        GDK_BUTTON_MOTION_MASK  |
+        GDK_BUTTON_RELEASE_MASK |
+        GDK_ENTER_NOTIFY_MASK   |
+        GDK_LEAVE_NOTIFY_MASK
     );
 
     g_signal_connect(
@@ -151,6 +164,18 @@ static void wintc_ctl_list_view_init(
         self,
         "motion-notify-event",
         G_CALLBACK(on_list_view_motion_notify_event),
+        NULL
+    );
+    g_signal_connect(
+        self,
+        "enter-notify-event",
+        G_CALLBACK(on_list_view_enter_notify_event),
+        NULL
+    );
+    g_signal_connect(
+        self,
+        "leave-notify-event",
+        G_CALLBACK(on_list_view_leave_notify_event),
         NULL
     );
 
@@ -644,6 +669,37 @@ static gboolean on_list_view_button_release_event(
     return TRUE;
 }
 
+static gboolean on_list_view_enter_notify_event(
+    GtkWidget* widget,
+    WINTC_UNUSED(GdkEvent*  event),
+    WINTC_UNUSED(gpointer   user_data)
+)
+{
+    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
+
+    list_view->hit_in_widget = TRUE;
+
+    return FALSE;
+}
+
+static gboolean on_list_view_leave_notify_event(
+    GtkWidget* widget,
+    WINTC_UNUSED(GdkEvent*  event),
+    WINTC_UNUSED(gpointer   user_data)
+)
+{
+    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
+
+    list_view->hit_in_widget = FALSE;
+
+    if (list_view->hit_started && list_view->hit_icon)
+    {
+        WINTC_LOG_DEBUG("Drag out?");
+    }
+
+    return FALSE;
+}
+
 static gboolean on_list_view_motion_notify_event(
     GtkWidget* widget,
     GdkEvent*  event,
@@ -652,6 +708,13 @@ static gboolean on_list_view_motion_notify_event(
 {
     GdkEventMotion*   e         = (GdkEventMotion*) event;
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
+
+    // Do not update any position information if we're not in bounds
+    //
+    if (!(list_view->hit_in_widget))
+    {
+        return FALSE;
+    }
 
     list_view->motion_rect.width =
         e->x - list_view->motion_rect.x;

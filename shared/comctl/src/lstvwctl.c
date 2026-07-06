@@ -10,6 +10,7 @@
 #define LABEL_TEXT_SHADOW_OFFSET    (LABEL_TEXT_SHADOW_RADIUS * 2)
 #define LABEL_TEXT_SHADOW_RADIUS    2
 
+#define DRAG_THRESHOLD    5
 #define HITBOX_LARGE_ICON 32
 
 //
@@ -61,12 +62,28 @@ static void wintc_ctl_list_view_render_large_icon(
     gint                      offset_x,
     gint                      offset_y
 );
+static void wintc_ctl_list_view_reset_hit_state(
+    WinTCCtlListView* list_view
+);
 static void wintc_ctl_list_view_set_icon_text(
     WinTCCtlListView*     list_view,
     WinTCCtlListViewIcon* icon,
     const gchar*          text
 );
 
+static void on_list_view_drag_end(
+    GtkWidget*      widget,
+    GdkDragContext* context,
+    gpointer        user_data
+);
+static gboolean on_list_view_drag_motion(
+    GtkWidget*      widget,
+    GdkDragContext* context,
+    int             x,
+    int             y,
+    guint           time,
+    gpointer        user_data
+);
 static gboolean on_list_view_button_press_event(
     GtkWidget* widget,
     GdkEvent*  event,
@@ -114,7 +131,15 @@ struct _WinTCCtlListView
 
     WinTCCtlListViewIcon* hit_icon;
     gboolean              hit_started;
+    gboolean              hit_dragging;
     gboolean              hit_in_widget;
+
+    // DND stuff
+    //
+    GtkTargetList*  dnd_targets;
+    GdkDragAction   dnd_actions;
+    gboolean        dnd_cancelled;
+    GdkDragContext* dnd_ctx;
 };
 
 //
@@ -158,6 +183,18 @@ static void wintc_ctl_list_view_init(
         self,
         "button-release-event",
         G_CALLBACK(on_list_view_button_release_event),
+        NULL
+    );
+    g_signal_connect(
+        self,
+        "drag-end",
+        G_CALLBACK(on_list_view_drag_end),
+        NULL
+    );
+    g_signal_connect(
+        self,
+        "drag-motion",
+        G_CALLBACK(on_list_view_drag_motion),
         NULL
     );
     g_signal_connect(
@@ -223,7 +260,7 @@ static gboolean wintc_ctl_list_view_draw(
     //
     if (list_view->hit_started)
     {
-        if (list_view->hit_icon) // Dragging icons
+        if (list_view->hit_dragging) // Dragging icons
         {
             for (
                 GList* iter = list_view->list_selected;
@@ -285,6 +322,56 @@ GtkWidget* wintc_ctl_list_view_new(void)
     );
 }
 
+void wintc_ctl_list_view_enable_drag_source(
+    WinTCCtlListView*     list_view,
+    const GtkTargetEntry* targets,
+    gint                  n_targets,
+    GdkDragAction         actions
+)
+{
+    if (list_view->dnd_targets)
+    {
+        wintc_ctl_list_view_unset_drag_source(list_view);
+    }
+
+    list_view->dnd_targets = gtk_target_list_new(targets, n_targets);
+    list_view->dnd_actions = actions;
+
+    // Must set ourselves up as a drag destination to be able to receive
+    // drag motion events
+    //
+    // FIXME: This will need updating when enable_drag_dest is implemented
+    //
+    gtk_drag_dest_set(
+        GTK_WIDGET(list_view),
+        0,
+        NULL,
+        0,
+        GDK_ACTION_COPY
+    );
+}
+
+void wintc_ctl_list_view_unset_drag_source(
+    WinTCCtlListView* list_view
+)
+{
+
+    if (list_view->dnd_ctx)
+    {
+        gtk_drag_cancel(list_view->dnd_ctx);
+        g_clear_object(&(list_view->dnd_ctx));
+    }
+
+    if (list_view->dnd_targets)
+    {
+        gtk_target_list_unref(list_view->dnd_targets);
+    }
+
+    list_view->dnd_cancelled = FALSE;
+    list_view->dnd_targets = NULL;
+    list_view->dnd_actions = 0;
+}
+
 //
 // PRIVATE FUNCTIONS
 //
@@ -316,7 +403,6 @@ static void wintc_ctl_list_view_create_large_icon(
 
     list_view->list_icons =
         g_list_append(list_view->list_icons, large_icon);
-
 
     gtk_widget_queue_draw(GTK_WIDGET(list_view));
 }
@@ -424,6 +510,16 @@ static void wintc_ctl_list_view_render_large_icon(
     pango_cairo_show_layout(cr, layout);
 
     g_object_unref(layout);
+}
+
+static void wintc_ctl_list_view_reset_hit_state(
+    WinTCCtlListView* list_view
+)
+{
+    memset(&(list_view->motion_rect), 0, sizeof(GdkRectangle));
+    list_view->hit_dragging = FALSE;
+    list_view->hit_icon     = NULL;
+    list_view->hit_started  = FALSE;
 }
 
 static void wintc_ctl_list_view_set_icon_text(
@@ -568,6 +664,11 @@ static gboolean on_list_view_button_press_event(
     GdkEventButton*   e         = (GdkEventButton*) event;
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
 
+    if (e->button & GDK_BUTTON1_MASK)
+    {
+        return FALSE;
+    }
+
     list_view->hit_started = TRUE;
 
     list_view->motion_rect.x = e->x;
@@ -660,13 +761,64 @@ static gboolean on_list_view_button_release_event(
         }
     }
 
-    memset(&(list_view->motion_rect), 0, sizeof(GdkRectangle));
-    list_view->hit_icon    = NULL;
-    list_view->hit_started = FALSE;
+    wintc_ctl_list_view_reset_hit_state(list_view);
 
     gtk_widget_queue_draw(widget);
 
     return TRUE;
+}
+
+static void on_list_view_drag_end(
+    GtkWidget* widget,
+    WINTC_UNUSED(GdkDragContext* context),
+    WINTC_UNUSED(gpointer user_data)
+)
+{
+    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
+
+    WINTC_LOG_DEBUG("Ended drag");
+
+    if (!list_view->dnd_cancelled)
+    {
+        wintc_ctl_list_view_reset_hit_state(list_view);
+    }
+
+    list_view->dnd_cancelled = FALSE;
+    list_view->dnd_ctx       = NULL;
+
+    gtk_widget_queue_draw(widget);
+}
+
+static gboolean on_list_view_drag_motion(
+    GtkWidget* widget,
+    WINTC_UNUSED(GdkDragContext* context),
+    WINTC_UNUSED(int x),
+    WINTC_UNUSED(int y),
+    WINTC_UNUSED(guint time),
+    WINTC_UNUSED(gpointer user_data)
+)
+{
+    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
+
+    // If we still have an ongoing drag, cancel it
+    //
+    if (list_view->dnd_ctx)
+    {
+        WINTC_LOG_DEBUG("Cancel drag");
+
+        GdkDragContext* ctx = g_steal_pointer(&(list_view->dnd_ctx));
+
+        list_view->dnd_cancelled = TRUE;
+        gtk_drag_cancel(ctx);
+    }
+
+    //
+    // FIXME: Hit test for drag drop?
+    //
+
+    gtk_widget_queue_draw(widget);
+
+    return FALSE;
 }
 
 static gboolean on_list_view_enter_notify_event(
@@ -692,11 +844,6 @@ static gboolean on_list_view_leave_notify_event(
 
     list_view->hit_in_widget = FALSE;
 
-    if (list_view->hit_started && list_view->hit_icon)
-    {
-        WINTC_LOG_DEBUG("Drag out?");
-    }
-
     return FALSE;
 }
 
@@ -713,6 +860,28 @@ static gboolean on_list_view_motion_notify_event(
     //
     if (!(list_view->hit_in_widget))
     {
+        // If an item was being dragged, we may initiate a drag now
+        //
+        if (
+            !(list_view->dnd_ctx)   &&
+            list_view->hit_dragging &&
+            list_view->dnd_targets
+        )
+        {
+            WINTC_LOG_DEBUG("Initiate drag");
+
+            list_view->dnd_ctx =
+                gtk_drag_begin_with_coordinates(
+                    widget,
+                    list_view->dnd_targets,
+                    list_view->dnd_actions,
+                    GDK_BUTTON1_MASK,
+                    event,
+                    -1,
+                    -1
+                );
+        }
+
         return FALSE;
     }
 
@@ -723,7 +892,20 @@ static gboolean on_list_view_motion_notify_event(
 
     // If no icon hit-tested, then this is a selection box dragging op
     //
-    if (!(list_view->hit_icon))
+    if (list_view->hit_icon)
+    {
+        if (
+            !(list_view->hit_dragging) &&
+            (
+                abs(list_view->motion_rect.width) > DRAG_THRESHOLD ||
+                abs(list_view->motion_rect.height) > DRAG_THRESHOLD
+            )
+        )
+        {
+            list_view->hit_dragging = TRUE;
+        }
+    }
+    else
     {
         g_clear_list(&(list_view->list_selected), NULL);
 

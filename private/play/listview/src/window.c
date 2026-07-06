@@ -7,6 +7,37 @@
 #include "window.h"
 
 //
+// PRIVATE ENUMS
+//
+enum
+{
+    TARGET_TEXT
+};
+
+//
+// FORWARD DECLARATIONS
+//
+static void on_list_view_drag_data_get(
+    GtkWidget*        widget,
+    GdkDragContext*   context,
+    GtkSelectionData* data,
+    guint             info,
+    guint             time,
+    gpointer          user_data
+);
+
+//
+// STATIC DATA
+//
+static GtkTargetEntry S_DRAG_TARGETS[] = {
+    {
+        "text/plain",
+        0,
+        TARGET_TEXT
+    }
+};
+
+//
 // GTK OOP CLASS/INSTANCE DEFINITIONS
 //
 struct _WinTCListViewTestWindowClass
@@ -36,6 +67,8 @@ static void wintc_list_view_test_window_init(
     WinTCListViewTestWindow* self
 )
 {
+    GtkWidget* list_view = wintc_ctl_list_view_new();
+
     gtk_window_set_default_size(
         GTK_WINDOW(self),
         320,
@@ -44,7 +77,21 @@ static void wintc_list_view_test_window_init(
 
     gtk_container_add(
         GTK_CONTAINER(self),
-        wintc_ctl_list_view_new()
+        list_view
+    );
+
+    wintc_ctl_list_view_enable_drag_source(
+        WINTC_CTL_LIST_VIEW(list_view),
+        S_DRAG_TARGETS,
+        G_N_ELEMENTS(S_DRAG_TARGETS),
+        GDK_ACTION_COPY
+    );
+
+    g_signal_connect(
+        list_view,
+        "drag-data-get",
+        G_CALLBACK(on_list_view_drag_data_get),
+        NULL
     );
 }
 
@@ -62,5 +109,24 @@ GtkWidget* wintc_list_view_test_window_new(
             "title",       "List View Test",
             NULL
         )
+    );
+}
+
+//
+// CALLBACKS
+//
+static void on_list_view_drag_data_get(
+    WINTC_UNUSED(GtkWidget* widget),
+    WINTC_UNUSED(GdkDragContext* context),
+    GtkSelectionData* data,
+    WINTC_UNUSED(guint info),
+    WINTC_UNUSED(guint time),
+    WINTC_UNUSED(gpointer user_data)
+)
+{
+    gtk_selection_data_set_text(
+        data,
+        "The drag worked!",
+        -1
     );
 }

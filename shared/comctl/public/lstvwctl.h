@@ -42,4 +42,14 @@ G_DECLARE_FINAL_TYPE(
  */
 GtkWidget* wintc_ctl_list_view_new(void);
 
+void wintc_ctl_list_view_enable_drag_source(
+    WinTCCtlListView*     list_view,
+    const GtkTargetEntry* targets,
+    gint                  n_targets,
+    GdkDragAction         actions
+);
+void wintc_ctl_list_view_unset_drag_source(
+    WinTCCtlListView* list_view
+);
+
 #endif

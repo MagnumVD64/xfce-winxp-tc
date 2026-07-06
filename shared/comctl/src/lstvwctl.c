@@ -146,6 +146,8 @@ struct _WinTCCtlListView
     GdkDragAction   dnd_actions;
     gboolean        dnd_cancelled;
     GdkDragContext* dnd_ctx;
+
+    WinTCCtlListViewIcon* dnd_icon_target;
 };
 
 //
@@ -250,11 +252,15 @@ static gboolean wintc_ctl_list_view_draw(
         WinTCCtlListViewIcon* large_icon =
             (WinTCCtlListViewIcon*) iter->data;
 
+        gboolean render_selected =
+            large_icon == list_view->dnd_icon_target ||
+            g_list_find(list_view->list_selected, large_icon);
+
         wintc_ctl_list_view_render_large_icon(
             list_view,
             large_icon,
             cr,
-            g_list_find(list_view->list_selected, large_icon) ?
+            render_selected ?
                 WINTC_CTL_LIST_VIEW_ICON_STYLE_SELECTED :
                 WINTC_CTL_LIST_VIEW_ICON_STYLE_REGULAR,
             0,
@@ -564,9 +570,10 @@ static void wintc_ctl_list_view_reset_hit_state(
 )
 {
     memset(&(list_view->motion_rect), 0, sizeof(GdkRectangle));
-    list_view->hit_dragging = FALSE;
-    list_view->hit_icon     = NULL;
-    list_view->hit_started  = FALSE;
+    list_view->hit_dragging    = FALSE;
+    list_view->hit_icon        = NULL;
+    list_view->hit_started     = FALSE;
+    list_view->dnd_icon_target = NULL;
 }
 
 static void wintc_ctl_list_view_set_icon_text(
@@ -926,6 +933,17 @@ static gboolean on_list_view_motion_notify_event(
         )
         {
             list_view->hit_dragging = TRUE;
+        }
+
+        if (list_view->hit_dragging)
+        {
+            list_view->dnd_icon_target =
+                wintc_ctl_list_view_hit_test(
+                    list_view,
+                    e->x,
+                    e->y,
+                    NULL
+                );
         }
     }
     else

@@ -54,6 +54,12 @@ static void wintc_ctl_list_view_create_large_icon(
     const gchar*      icon_name,
     const gchar*      text
 );
+static WinTCCtlListViewIcon* wintc_ctl_list_view_hit_test(
+    WinTCCtlListView* list_view,
+    gint              x,
+    gint              y,
+    gboolean*         hit_label
+);
 static void wintc_ctl_list_view_render_large_icon(
     WinTCCtlListView*         list_view,
     WinTCCtlListViewIcon*     large_icon,
@@ -407,6 +413,47 @@ static void wintc_ctl_list_view_create_large_icon(
     gtk_widget_queue_draw(GTK_WIDGET(list_view));
 }
 
+static WinTCCtlListViewIcon* wintc_ctl_list_view_hit_test(
+    WinTCCtlListView* list_view,
+    gint              x,
+    gint              y,
+    gboolean*         hit_label
+)
+{
+    // Crude hit box search
+    //
+    for (GList* iter = list_view->list_icons; iter; iter = iter->next)
+    {
+        WinTCCtlListViewIcon* large_icon =
+            (WinTCCtlListViewIcon*) iter->data;
+
+        if (
+            wintc_point_xy_in_rect(
+                x,
+                y,
+                &(large_icon->hitbox_icon)
+            )
+        )
+        {
+            return large_icon;
+        }
+
+        if (
+            wintc_point_xy_in_rect(
+                x,
+                y,
+                &(large_icon->hitbox_label)
+            )
+        )
+        {
+            WINTC_SAFE_REF_SET(hit_label, TRUE);
+            return large_icon;
+        }
+    }
+
+    return NULL;
+}
+
 static void wintc_ctl_list_view_render_large_icon(
     WinTCCtlListView*         list_view,
     WinTCCtlListViewIcon*     large_icon,
@@ -674,62 +721,38 @@ static gboolean on_list_view_button_press_event(
     list_view->motion_rect.x = e->x;
     list_view->motion_rect.y = e->y;
 
-    // Crude hit box search
+    // Hit check
     //
-    for (GList* iter = list_view->list_icons; iter; iter = iter->next)
-    {
-        WinTCCtlListViewIcon* large_icon =
-            (WinTCCtlListViewIcon*) iter->data;
-
-        WINTC_LOG_DEBUG(
-            "Hit test x%d y%d against icon x%d y%d",
-            (gint) e->x,
-            (gint) e->y,
-            large_icon->hitbox_icon.x,
-            large_icon->hitbox_icon.y
+    list_view->hit_icon =
+        wintc_ctl_list_view_hit_test(
+            list_view,
+            e->x,
+            e->y,
+            NULL
         );
 
+    // Update the selection state for whether we hit the icon or not
+    //
+    if (list_view->hit_icon)
+    {
         if (
-            wintc_point_xy_in_rect(
-                (gint) e->x,
-                (gint) e->y,
-                &(large_icon->hitbox_icon)
-            ) ||
-            wintc_point_xy_in_rect(
-                (gint) e->x,
-                (gint) e->y,
-                &(large_icon->hitbox_label)
+            !list_view->list_selected ||
+            !g_list_find(
+                list_view->list_selected,
+                list_view->hit_icon
             )
         )
         {
-            WINTC_LOG_DEBUG("Hit!");
+            g_clear_list(&(list_view->list_selected), NULL);
 
-            if (
-                !list_view->list_selected ||
-                !g_list_find(
+            list_view->list_selected =
+                g_list_append(
                     list_view->list_selected,
-                    large_icon
-                )
-            )
-            {
-                g_clear_list(&(list_view->list_selected), NULL);
-
-                list_view->list_selected =
-                    g_list_append(
-                        list_view->list_selected,
-                        large_icon
-                    );
-            }
-
-            list_view->hit_icon = large_icon;
-
-            break;
+                    list_view->hit_icon
+                );
         }
     }
-
-    // If nothing was hit, clear the selection
-    //
-    if (!(list_view->hit_icon))
+    else
     {
         g_clear_list(&(list_view->list_selected), NULL);
     }

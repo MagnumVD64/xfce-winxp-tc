@@ -76,6 +76,9 @@ static void wintc_ctl_list_view_set_icon_text(
     WinTCCtlListViewIcon* icon,
     const gchar*          text
 );
+static void wintc_ctl_list_view_update_dnd_state(
+    WinTCCtlListView* list_view
+);
 
 static void on_list_view_drag_end(
     GtkWidget*      widget,
@@ -142,8 +145,10 @@ struct _WinTCCtlListView
 
     // DND stuff
     //
-    GtkTargetList*  dnd_targets;
-    GdkDragAction   dnd_actions;
+    GtkTargetList*  dnd_dest_targets;
+    GdkDragAction   dnd_dest_actions;
+    GtkTargetList*  dnd_src_targets;
+    GdkDragAction   dnd_src_actions;
     gboolean        dnd_cancelled;
     GdkDragContext* dnd_ctx;
 
@@ -334,6 +339,24 @@ GtkWidget* wintc_ctl_list_view_new(void)
     );
 }
 
+void wintc_ctl_list_view_enable_drag_dest(
+    WinTCCtlListView*     list_view,
+    const GtkTargetEntry* targets,
+    gint                  n_targets,
+    GdkDragAction         actions
+)
+{
+    if (list_view->dnd_dest_targets)
+    {
+        wintc_ctl_list_view_unset_drag_dest(list_view);
+    }
+
+    list_view->dnd_dest_targets = gtk_target_list_new(targets, n_targets);
+    list_view->dnd_dest_actions = actions;
+
+    wintc_ctl_list_view_update_dnd_state(list_view);
+}
+
 void wintc_ctl_list_view_enable_drag_source(
     WinTCCtlListView*     list_view,
     const GtkTargetEntry* targets,
@@ -341,18 +364,16 @@ void wintc_ctl_list_view_enable_drag_source(
     GdkDragAction         actions
 )
 {
-    if (list_view->dnd_targets)
+    if (list_view->dnd_src_targets)
     {
         wintc_ctl_list_view_unset_drag_source(list_view);
     }
 
-    list_view->dnd_targets = gtk_target_list_new(targets, n_targets);
-    list_view->dnd_actions = actions;
+    list_view->dnd_src_targets = gtk_target_list_new(targets, n_targets);
+    list_view->dnd_src_actions = actions;
 
     // Must set ourselves up as a drag destination to be able to receive
     // drag motion events
-    //
-    // FIXME: This will need updating when enable_drag_dest is implemented
     //
     gtk_drag_dest_set(
         GTK_WIDGET(list_view),
@@ -361,27 +382,45 @@ void wintc_ctl_list_view_enable_drag_source(
         0,
         GDK_ACTION_COPY
     );
+
+    wintc_ctl_list_view_update_dnd_state(list_view);
+}
+
+void wintc_ctl_list_view_unset_drag_dest(
+    WinTCCtlListView* list_view
+)
+{
+    if (list_view->dnd_dest_targets)
+    {
+        gtk_target_list_unref(list_view->dnd_dest_targets);
+    }
+
+    list_view->dnd_dest_targets   = NULL;
+    list_view->dnd_dest_actions   = 0;
+
+    wintc_ctl_list_view_update_dnd_state(list_view);
 }
 
 void wintc_ctl_list_view_unset_drag_source(
     WinTCCtlListView* list_view
 )
 {
-
     if (list_view->dnd_ctx)
     {
         gtk_drag_cancel(list_view->dnd_ctx);
         g_clear_object(&(list_view->dnd_ctx));
     }
 
-    if (list_view->dnd_targets)
+    if (list_view->dnd_src_targets)
     {
-        gtk_target_list_unref(list_view->dnd_targets);
+        gtk_target_list_unref(list_view->dnd_src_targets);
     }
 
-    list_view->dnd_cancelled = FALSE;
-    list_view->dnd_targets = NULL;
-    list_view->dnd_actions = 0;
+    list_view->dnd_cancelled   = FALSE;
+    list_view->dnd_src_targets = NULL;
+    list_view->dnd_src_actions = 0;
+
+    wintc_ctl_list_view_update_dnd_state(list_view);
 }
 
 //
@@ -706,6 +745,37 @@ static void wintc_ctl_list_view_set_icon_text(
     cairo_surface_mark_dirty(icon->surface_text_shadow);
 }
 
+static void wintc_ctl_list_view_update_dnd_state(
+    WinTCCtlListView* list_view
+)
+{
+    gtk_drag_dest_unset(GTK_WIDGET(list_view));
+
+    if (
+        list_view->dnd_src_targets ||
+        list_view->dnd_dest_targets
+    )
+    {
+        gtk_drag_dest_set(
+            GTK_WIDGET(list_view),
+            0,
+            NULL,
+            0,
+            list_view->dnd_dest_actions ?
+                list_view->dnd_dest_actions :
+                GDK_ACTION_COPY
+        );
+
+        if (list_view->dnd_dest_targets)
+        {
+            gtk_drag_dest_set_target_list(
+                GTK_WIDGET(list_view),
+                list_view->dnd_dest_targets
+            );
+        }
+    }
+}
+
 //
 // CALLBACKS
 //
@@ -822,13 +892,15 @@ static void on_list_view_drag_end(
 static gboolean on_list_view_drag_motion(
     GtkWidget* widget,
     WINTC_UNUSED(GdkDragContext* context),
-    WINTC_UNUSED(int x),
-    WINTC_UNUSED(int y),
+    int        x,
+    int        y,
     WINTC_UNUSED(guint time),
     WINTC_UNUSED(gpointer user_data)
 )
 {
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
+
+    WINTC_LOG_DEBUG("Hello!");
 
     // If we still have an ongoing drag, cancel it
     //
@@ -841,10 +913,16 @@ static gboolean on_list_view_drag_motion(
         list_view->dnd_cancelled = TRUE;
         gtk_drag_cancel(ctx);
     }
-
-    //
-    // FIXME: Hit test for drag drop?
-    //
+    else
+    {
+        list_view->dnd_icon_target =
+            wintc_ctl_list_view_hit_test(
+                list_view,
+                x,
+                y,
+                NULL
+            );
+    }
 
     gtk_widget_queue_draw(widget);
 
@@ -895,7 +973,7 @@ static gboolean on_list_view_motion_notify_event(
         if (
             !(list_view->dnd_ctx)   &&
             list_view->hit_dragging &&
-            list_view->dnd_targets
+            list_view->dnd_src_targets
         )
         {
             WINTC_LOG_DEBUG("Initiate drag");
@@ -903,8 +981,8 @@ static gboolean on_list_view_motion_notify_event(
             list_view->dnd_ctx =
                 gtk_drag_begin_with_coordinates(
                     widget,
-                    list_view->dnd_targets,
-                    list_view->dnd_actions,
+                    list_view->dnd_src_targets,
+                    list_view->dnd_src_actions,
                     GDK_BUTTON1_MASK,
                     event,
                     -1,

@@ -25,6 +25,16 @@ static void on_list_view_drag_data_get(
     guint             time,
     gpointer          user_data
 );
+static void on_list_view_drag_data_received(
+    GtkWidget*        widget,
+    GdkDragContext*   context,
+    gint              x,
+    gint              y,
+    GtkSelectionData* data,
+    guint             info,
+    guint             time,
+    gpointer          user_data
+);
 
 //
 // STATIC DATA
@@ -80,6 +90,12 @@ static void wintc_list_view_test_window_init(
         list_view
     );
 
+    wintc_ctl_list_view_enable_drag_dest(
+        WINTC_CTL_LIST_VIEW(list_view),
+        S_DRAG_TARGETS,
+        G_N_ELEMENTS(S_DRAG_TARGETS),
+        GDK_ACTION_COPY
+    );
     wintc_ctl_list_view_enable_drag_source(
         WINTC_CTL_LIST_VIEW(list_view),
         S_DRAG_TARGETS,
@@ -91,6 +107,12 @@ static void wintc_list_view_test_window_init(
         list_view,
         "drag-data-get",
         G_CALLBACK(on_list_view_drag_data_get),
+        NULL
+    );
+    g_signal_connect(
+        list_view,
+        "drag-data-received",
+        G_CALLBACK(on_list_view_drag_data_received),
         NULL
     );
 }
@@ -129,4 +151,22 @@ static void on_list_view_drag_data_get(
         "The drag worked!",
         -1
     );
+}
+
+static void on_list_view_drag_data_received(
+    WINTC_UNUSED(GtkWidget* widget),
+    WINTC_UNUSED(GdkDragContext* context),
+    WINTC_UNUSED(gint x),
+    WINTC_UNUSED(gint y),
+    GtkSelectionData* data,
+    WINTC_UNUSED(guint info),
+    WINTC_UNUSED(guint time),
+    WINTC_UNUSED(gpointer user_data)
+)
+{
+    gchar* str = (gchar*) gtk_selection_data_get_text(data);
+
+    WINTC_LOG_DEBUG("%s", str);
+
+    g_free(str);
 }

@@ -140,7 +140,6 @@ struct _WinTCCtlListView
 
     WinTCCtlListViewIcon* hit_icon;
     gboolean              hit_started;
-    gboolean              hit_dragging;
     gboolean              hit_in_widget;
 
     // DND stuff
@@ -149,7 +148,6 @@ struct _WinTCCtlListView
     GdkDragAction   dnd_dest_actions;
     GtkTargetList*  dnd_src_targets;
     GdkDragAction   dnd_src_actions;
-    gboolean        dnd_cancelled;
     GdkDragContext* dnd_ctx;
 
     WinTCCtlListViewIcon* dnd_icon_target;
@@ -277,7 +275,7 @@ static gboolean wintc_ctl_list_view_draw(
     //
     if (list_view->hit_started)
     {
-        if (list_view->hit_dragging) // Dragging icons
+        if (list_view->dnd_ctx) // Dragging icons
         {
             for (
                 GList* iter = list_view->list_selected;
@@ -416,7 +414,6 @@ void wintc_ctl_list_view_unset_drag_source(
         gtk_target_list_unref(list_view->dnd_src_targets);
     }
 
-    list_view->dnd_cancelled   = FALSE;
     list_view->dnd_src_targets = NULL;
     list_view->dnd_src_actions = 0;
 
@@ -609,7 +606,6 @@ static void wintc_ctl_list_view_reset_hit_state(
 )
 {
     memset(&(list_view->motion_rect), 0, sizeof(GdkRectangle));
-    list_view->hit_dragging    = FALSE;
     list_view->hit_icon        = NULL;
     list_view->hit_started     = FALSE;
     list_view->dnd_icon_target = NULL;
@@ -845,22 +841,6 @@ static gboolean on_list_view_button_release_event(
 {
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
 
-    // If we were dragging icons then commit the drag now
-    //
-    if (list_view->hit_icon)
-    {
-        for (GList* iter = list_view->list_selected; iter; iter = iter->next)
-        {
-            WinTCCtlListViewIcon* large_icon =
-                (WinTCCtlListViewIcon*) iter->data;
-
-            large_icon->hitbox_icon.x  += list_view->motion_rect.width;
-            large_icon->hitbox_icon.y  += list_view->motion_rect.height;
-            large_icon->hitbox_label.x += list_view->motion_rect.width;
-            large_icon->hitbox_label.y += list_view->motion_rect.height;
-        }
-    }
-
     wintc_ctl_list_view_reset_hit_state(list_view);
 
     gtk_widget_queue_draw(widget);
@@ -878,13 +858,25 @@ static void on_list_view_drag_end(
 
     WINTC_LOG_DEBUG("Ended drag");
 
-    if (!list_view->dnd_cancelled)
+    // If we were dragging icons then commit the drag now
+    //
+    if (list_view->dnd_ctx)
     {
+        for (GList* iter = list_view->list_selected; iter; iter = iter->next)
+        {
+            WinTCCtlListViewIcon* large_icon =
+                (WinTCCtlListViewIcon*) iter->data;
+
+            large_icon->hitbox_icon.x  += list_view->motion_rect.width;
+            large_icon->hitbox_icon.y  += list_view->motion_rect.height;
+            large_icon->hitbox_label.x += list_view->motion_rect.width;
+            large_icon->hitbox_label.y += list_view->motion_rect.height;
+        }
+
         wintc_ctl_list_view_reset_hit_state(list_view);
     }
 
-    list_view->dnd_cancelled = FALSE;
-    list_view->dnd_ctx       = NULL;
+    list_view->dnd_ctx = NULL;
 
     gtk_widget_queue_draw(widget);
 }
@@ -900,29 +892,23 @@ static gboolean on_list_view_drag_motion(
 {
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
 
-    WINTC_LOG_DEBUG("Hello!");
-
-    // If we still have an ongoing drag, cancel it
+    // If it's our drag, update the dragging position
     //
     if (list_view->dnd_ctx)
     {
-        WINTC_LOG_DEBUG("Cancel drag");
-
-        GdkDragContext* ctx = g_steal_pointer(&(list_view->dnd_ctx));
-
-        list_view->dnd_cancelled = TRUE;
-        gtk_drag_cancel(ctx);
+        list_view->motion_rect.width =
+            x - list_view->motion_rect.x;
+        list_view->motion_rect.height =
+            y - list_view->motion_rect.y;
     }
-    else
-    {
-        list_view->dnd_icon_target =
-            wintc_ctl_list_view_hit_test(
-                list_view,
-                x,
-                y,
-                NULL
-            );
-    }
+
+    list_view->dnd_icon_target =
+        wintc_ctl_list_view_hit_test(
+            list_view,
+            x,
+            y,
+            NULL
+        );
 
     gtk_widget_queue_draw(widget);
 
@@ -968,28 +954,6 @@ static gboolean on_list_view_motion_notify_event(
     //
     if (!(list_view->hit_in_widget))
     {
-        // If an item was being dragged, we may initiate a drag now
-        //
-        if (
-            !(list_view->dnd_ctx)   &&
-            list_view->hit_dragging &&
-            list_view->dnd_src_targets
-        )
-        {
-            WINTC_LOG_DEBUG("Initiate drag");
-
-            list_view->dnd_ctx =
-                gtk_drag_begin_with_coordinates(
-                    widget,
-                    list_view->dnd_src_targets,
-                    list_view->dnd_src_actions,
-                    GDK_BUTTON1_MASK,
-                    event,
-                    -1,
-                    -1
-                );
-        }
-
         return FALSE;
     }
 
@@ -1003,24 +967,21 @@ static gboolean on_list_view_motion_notify_event(
     if (list_view->hit_icon)
     {
         if (
-            !(list_view->hit_dragging) &&
-            (
-                abs(list_view->motion_rect.width) > DRAG_THRESHOLD ||
-                abs(list_view->motion_rect.height) > DRAG_THRESHOLD
-            )
+            abs(list_view->motion_rect.width)  > DRAG_THRESHOLD ||
+            abs(list_view->motion_rect.height) > DRAG_THRESHOLD
         )
         {
-            list_view->hit_dragging = TRUE;
-        }
+            WINTC_LOG_DEBUG("Initiate drag");
 
-        if (list_view->hit_dragging)
-        {
-            list_view->dnd_icon_target =
-                wintc_ctl_list_view_hit_test(
-                    list_view,
-                    e->x,
-                    e->y,
-                    NULL
+            list_view->dnd_ctx =
+                gtk_drag_begin_with_coordinates(
+                    widget,
+                    list_view->dnd_src_targets,
+                    list_view->dnd_src_actions,
+                    GDK_BUTTON1_MASK,
+                    event,
+                    -1,
+                    -1
                 );
         }
     }

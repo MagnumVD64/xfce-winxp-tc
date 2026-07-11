@@ -35,6 +35,22 @@ static void on_list_view_drag_data_received(
     guint             time,
     gpointer          user_data
 );
+static gboolean on_list_view_drag_drop(
+    GtkWidget*      widget,
+    GdkDragContext* context,
+    int             x,
+    int             y,
+    guint           time,
+    gpointer        user_data
+);
+static gboolean on_list_view_drag_motion(
+    GtkWidget*      widget,
+    GdkDragContext* context,
+    int             x,
+    int             y,
+    guint           time,
+    gpointer        user_data
+);
 
 //
 // STATIC DATA
@@ -46,6 +62,8 @@ static GtkTargetEntry S_DRAG_TARGETS[] = {
         TARGET_TEXT
     }
 };
+
+static GdkAtom S_ATOM_TEXT_PLAIN;
 
 //
 // GTK OOP CLASS/INSTANCE DEFINITIONS
@@ -71,7 +89,11 @@ G_DEFINE_TYPE(
 
 static void wintc_list_view_test_window_class_init(
     WINTC_UNUSED(WinTCListViewTestWindowClass* klass)
-) {}
+)
+{
+    S_ATOM_TEXT_PLAIN =
+        gdk_atom_intern_static_string("text/plain");
+}
 
 static void wintc_list_view_test_window_init(
     WinTCListViewTestWindow* self
@@ -115,6 +137,18 @@ static void wintc_list_view_test_window_init(
         G_CALLBACK(on_list_view_drag_data_received),
         NULL
     );
+    g_signal_connect(
+        list_view,
+        "drag-drop",
+        G_CALLBACK(on_list_view_drag_drop),
+        NULL
+    );
+    g_signal_connect(
+        list_view,
+        "drag-motion",
+        G_CALLBACK(on_list_view_drag_motion),
+        NULL
+    );
 }
 
 //
@@ -155,12 +189,12 @@ static void on_list_view_drag_data_get(
 
 static void on_list_view_drag_data_received(
     WINTC_UNUSED(GtkWidget* widget),
-    WINTC_UNUSED(GdkDragContext* context),
+    GdkDragContext*   context,
     WINTC_UNUSED(gint x),
     WINTC_UNUSED(gint y),
     GtkSelectionData* data,
     WINTC_UNUSED(guint info),
-    WINTC_UNUSED(guint time),
+    guint             time,
     WINTC_UNUSED(gpointer user_data)
 )
 {
@@ -169,4 +203,48 @@ static void on_list_view_drag_data_received(
     WINTC_LOG_DEBUG("%s", str);
 
     g_free(str);
+
+    gtk_drag_finish(
+        context,
+        TRUE,
+        FALSE,
+        time
+    );
+}
+
+static gboolean on_list_view_drag_drop(
+    GtkWidget*      widget,
+    GdkDragContext* context,
+    WINTC_UNUSED(int x),
+    WINTC_UNUSED(int y),
+    guint           time,
+    WINTC_UNUSED(gpointer user_data)
+)
+{
+    gtk_drag_get_data(
+        widget,
+        context,
+        S_ATOM_TEXT_PLAIN,
+        time
+    );
+
+    return TRUE;
+}
+
+static gboolean on_list_view_drag_motion(
+    WINTC_UNUSED(GtkWidget* widget),
+    GdkDragContext* context,
+    WINTC_UNUSED(int x),
+    WINTC_UNUSED(int y),
+    guint           time,
+    WINTC_UNUSED(gpointer user_data)
+)
+{
+    gdk_drag_status(
+        context,
+        GDK_ACTION_COPY,
+        time
+    );
+
+    return TRUE;
 }

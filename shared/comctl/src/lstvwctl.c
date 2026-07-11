@@ -49,6 +49,9 @@ static gboolean wintc_ctl_list_view_draw(
     cairo_t*   cr
 );
 
+static void wintc_ctl_list_view_commit_icon_drag(
+    WinTCCtlListView* list_view
+);
 static void wintc_ctl_list_view_create_large_icon(
     WinTCCtlListView* list_view,
     const gchar*      icon_name,
@@ -140,6 +143,7 @@ struct _WinTCCtlListView
 
     WinTCCtlListViewIcon* hit_icon;
     gboolean              hit_started;
+    gboolean              hit_dragging;
     gboolean              hit_in_widget;
 
     // DND stuff
@@ -275,7 +279,7 @@ static gboolean wintc_ctl_list_view_draw(
     //
     if (list_view->hit_started)
     {
-        if (list_view->dnd_ctx) // Dragging icons
+        if (list_view->hit_dragging) // Dragging icons
         {
             for (
                 GList* iter = list_view->list_selected;
@@ -423,6 +427,22 @@ void wintc_ctl_list_view_unset_drag_source(
 //
 // PRIVATE FUNCTIONS
 //
+static void wintc_ctl_list_view_commit_icon_drag(
+    WinTCCtlListView* list_view
+)
+{
+    for (GList* iter = list_view->list_selected; iter; iter = iter->next)
+    {
+        WinTCCtlListViewIcon* large_icon =
+            (WinTCCtlListViewIcon*) iter->data;
+
+        large_icon->hitbox_icon.x  += list_view->motion_rect.width;
+        large_icon->hitbox_icon.y  += list_view->motion_rect.height;
+        large_icon->hitbox_label.x += list_view->motion_rect.width;
+        large_icon->hitbox_label.y += list_view->motion_rect.height;
+    }
+}
+
 static void wintc_ctl_list_view_create_large_icon(
     WinTCCtlListView* list_view,
     const gchar*      icon_name,
@@ -608,6 +628,7 @@ static void wintc_ctl_list_view_reset_hit_state(
     memset(&(list_view->motion_rect), 0, sizeof(GdkRectangle));
     list_view->hit_icon        = NULL;
     list_view->hit_started     = FALSE;
+    list_view->hit_dragging    = FALSE;
     list_view->dnd_icon_target = NULL;
 }
 
@@ -841,6 +862,11 @@ static gboolean on_list_view_button_release_event(
 {
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
 
+    if (list_view->hit_dragging)
+    {
+        wintc_ctl_list_view_commit_icon_drag(list_view);
+    }
+
     wintc_ctl_list_view_reset_hit_state(list_view);
 
     gtk_widget_queue_draw(widget);
@@ -862,17 +888,7 @@ static void on_list_view_drag_end(
     //
     if (list_view->dnd_ctx)
     {
-        for (GList* iter = list_view->list_selected; iter; iter = iter->next)
-        {
-            WinTCCtlListViewIcon* large_icon =
-                (WinTCCtlListViewIcon*) iter->data;
-
-            large_icon->hitbox_icon.x  += list_view->motion_rect.width;
-            large_icon->hitbox_icon.y  += list_view->motion_rect.height;
-            large_icon->hitbox_label.x += list_view->motion_rect.width;
-            large_icon->hitbox_label.y += list_view->motion_rect.height;
-        }
-
+        wintc_ctl_list_view_commit_icon_drag(list_view);
         wintc_ctl_list_view_reset_hit_state(list_view);
     }
 
@@ -967,22 +983,30 @@ static gboolean on_list_view_motion_notify_event(
     if (list_view->hit_icon)
     {
         if (
-            abs(list_view->motion_rect.width)  > DRAG_THRESHOLD ||
-            abs(list_view->motion_rect.height) > DRAG_THRESHOLD
+            !(list_view->hit_dragging) &&
+            (
+                abs(list_view->motion_rect.width)  > DRAG_THRESHOLD ||
+                abs(list_view->motion_rect.height) > DRAG_THRESHOLD
+            )
         )
         {
-            WINTC_LOG_DEBUG("Initiate drag");
+            list_view->hit_dragging = TRUE;
 
-            list_view->dnd_ctx =
-                gtk_drag_begin_with_coordinates(
-                    widget,
-                    list_view->dnd_src_targets,
-                    list_view->dnd_src_actions,
-                    GDK_BUTTON1_MASK,
-                    event,
-                    -1,
-                    -1
-                );
+            if (list_view->dnd_src_targets)
+            {
+                WINTC_LOG_DEBUG("Initiate drag");
+
+                list_view->dnd_ctx =
+                    gtk_drag_begin_with_coordinates(
+                        widget,
+                        list_view->dnd_src_targets,
+                        list_view->dnd_src_actions,
+                        GDK_BUTTON1_MASK,
+                        event,
+                        -1,
+                        -1
+                    );
+            }
         }
     }
     else

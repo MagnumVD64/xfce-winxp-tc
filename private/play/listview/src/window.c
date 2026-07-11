@@ -6,6 +6,8 @@
 #include "application.h"
 #include "window.h"
 
+#define ENABLE_DND
+
 //
 // PRIVATE ENUMS
 //
@@ -55,6 +57,7 @@ static gboolean on_list_view_drag_motion(
 //
 // STATIC DATA
 //
+#ifdef ENABLE_DND
 static GtkTargetEntry S_DRAG_TARGETS[] = {
     {
         "text/plain",
@@ -62,6 +65,7 @@ static GtkTargetEntry S_DRAG_TARGETS[] = {
         TARGET_TEXT
     }
 };
+#endif
 
 static GdkAtom S_ATOM_TEXT_PLAIN;
 
@@ -112,6 +116,7 @@ static void wintc_list_view_test_window_init(
         list_view
     );
 
+#ifdef ENABLE_DND
     wintc_ctl_list_view_enable_drag_dest(
         WINTC_CTL_LIST_VIEW(list_view),
         S_DRAG_TARGETS,
@@ -124,6 +129,7 @@ static void wintc_list_view_test_window_init(
         G_N_ELEMENTS(S_DRAG_TARGETS),
         GDK_ACTION_COPY
     );
+#endif
 
     g_signal_connect(
         list_view,

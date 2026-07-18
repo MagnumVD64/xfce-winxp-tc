@@ -18,6 +18,12 @@
 //
 // PRIVATE ENUMS
 //
+enum
+{
+    SIGNAL_ITEM_ACTIVATED = 0,
+    N_SIGNALS
+};
+
 typedef enum _WinTCCtlListViewIconStyle
 {
     WINTC_CTL_LIST_VIEW_ICON_STYLE_REGULAR,
@@ -121,6 +127,11 @@ static gboolean on_list_view_enter_notify_event(
     GdkEvent*  event,
     gpointer   user_data
 );
+static gboolean on_list_view_key_press_event(
+    GtkWidget* widget,
+    GdkEvent*  event,
+    gpointer   user_data
+);
 static gboolean on_list_view_leave_notify_event(
     GtkWidget* widget,
     GdkEvent*  event,
@@ -156,6 +167,11 @@ static void on_model_rows_reordered(
     gpointer      new_order,
     gpointer      user_data
 );
+
+//
+// STATIC DATA
+//
+static gint wintc_ctl_list_view_signals[N_SIGNALS] = { 0 };
 
 //
 // GTK OOP CLASS/INSTANCE DEFINITIONS
@@ -217,9 +233,24 @@ static void wintc_ctl_list_view_class_init(
     WinTCCtlListViewClass* klass
 )
 {
+    GObjectClass*   object_class = G_OBJECT_CLASS(klass);
     GtkWidgetClass* widget_class = GTK_WIDGET_CLASS(klass);
 
     widget_class->draw = wintc_ctl_list_view_draw;
+
+    wintc_ctl_list_view_signals[SIGNAL_ITEM_ACTIVATED] =
+        g_signal_new(
+            "item-activated",
+            G_TYPE_FROM_CLASS(object_class),
+            G_SIGNAL_RUN_FIRST,
+            0,
+            NULL,
+            NULL,
+            g_cclosure_marshal_VOID__POINTER,
+            G_TYPE_NONE,
+            1,
+            G_TYPE_POINTER
+        );
 }
 
 static void wintc_ctl_list_view_init(
@@ -236,8 +267,11 @@ static void wintc_ctl_list_view_init(
         GDK_BUTTON_MOTION_MASK  |
         GDK_BUTTON_RELEASE_MASK |
         GDK_ENTER_NOTIFY_MASK   |
-        GDK_LEAVE_NOTIFY_MASK
+        GDK_LEAVE_NOTIFY_MASK   |
+        GDK_KEY_PRESS_MASK
     );
+
+    gtk_widget_set_can_focus(GTK_WIDGET(self), TRUE);
 
     g_signal_connect(
         self,
@@ -265,20 +299,26 @@ static void wintc_ctl_list_view_init(
     );
     g_signal_connect(
         self,
-        "motion-notify-event",
-        G_CALLBACK(on_list_view_motion_notify_event),
-        NULL
-    );
-    g_signal_connect(
-        self,
         "enter-notify-event",
         G_CALLBACK(on_list_view_enter_notify_event),
         NULL
     );
     g_signal_connect(
         self,
+        "key-press-event",
+        G_CALLBACK(on_list_view_key_press_event),
+        NULL
+    );
+    g_signal_connect(
+        self,
         "leave-notify-event",
         G_CALLBACK(on_list_view_leave_notify_event),
+        NULL
+    );
+    g_signal_connect(
+        self,
+        "motion-notify-event",
+        G_CALLBACK(on_list_view_motion_notify_event),
         NULL
     );
 }
@@ -1132,6 +1172,48 @@ static gboolean on_list_view_enter_notify_event(
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
 
     list_view->hit_in_widget = TRUE;
+
+    return FALSE;
+}
+
+static gboolean on_list_view_key_press_event(
+    GtkWidget* widget,
+    GdkEvent*  event,
+    WINTC_UNUSED(gpointer user_data)
+)
+{
+    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
+    GdkEventKey*      e         = (GdkEventKey*) event;
+
+    if (e->keyval == GDK_KEY_Return)
+    {
+        if (!(list_view->list_selected))
+        {
+            return FALSE;
+        }
+
+        // Fire item-activated for each selected item
+        //
+        for (GList* iter = list_view->list_selected; iter; iter = iter->next)
+        {
+            GSequenceIter* iter_seq =
+                wintc_sequence_find(list_view->seq_icons, iter->data);
+
+            gint idx = g_sequence_iter_get_position(iter_seq);
+
+            GtkTreePath* path =
+                gtk_tree_path_new_from_indices(idx, -1);
+
+            g_signal_emit(
+                list_view,
+                wintc_ctl_list_view_signals[SIGNAL_ITEM_ACTIVATED],
+                0,
+                path
+            );
+
+            gtk_tree_path_free(path);
+        }
+    }
 
     return FALSE;
 }

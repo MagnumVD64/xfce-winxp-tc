@@ -65,6 +65,11 @@ static gboolean on_list_view_drag_motion(
     guint           time,
     gpointer        user_data
 );
+static void on_list_view_item_activated(
+    WinTCCtlListView* list_view,
+    GtkTreePath*      path,
+    gpointer          user_data
+);
 
 //
 // STATIC DATA
@@ -191,6 +196,12 @@ static void wintc_list_view_test_window_init(
         "drag-motion",
         G_CALLBACK(on_list_view_drag_motion),
         NULL
+    );
+    g_signal_connect(
+        list_view,
+        "item-activated",
+        G_CALLBACK(on_list_view_item_activated),
+        self
     );
 
     // Add items
@@ -343,4 +354,34 @@ static gboolean on_list_view_drag_motion(
     );
 
     return TRUE;
+}
+
+static void on_list_view_item_activated(
+    WINTC_UNUSED(WinTCCtlListView* list_view),
+    GtkTreePath* path,
+    gpointer     user_data
+)
+{
+    WinTCListViewTestWindow* wnd = WINTC_LIST_VIEW_TEST_WINDOW(user_data);
+
+    GtkTreeIter   iter;
+    GtkTreeModel* model = GTK_TREE_MODEL(wnd->model);
+    gchar*        text  = NULL;
+
+    gtk_tree_model_get_iter(
+        model,
+        &iter,
+        path
+    );
+
+    gtk_tree_model_get(
+        model,
+        &iter,
+        COL_TEXT, &text,
+        -1
+    );
+
+    g_message("Selected: %s", text);
+
+    g_free(text);
 }

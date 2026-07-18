@@ -84,6 +84,8 @@ add_library(
     src/regex.c
     public/regex.h
     src/resources.c
+    src/sequence.c
+    public/sequence.h
     public/shorthand.h
     src/signals.c
     public/signals.h

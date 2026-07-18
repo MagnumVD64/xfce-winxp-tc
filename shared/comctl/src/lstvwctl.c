@@ -13,6 +13,8 @@
 #define DRAG_THRESHOLD    5
 #define HITBOX_LARGE_ICON 32
 
+#define ICON_IS_COMMITTED(i) (i->icon && i->text)
+
 //
 // PRIVATE ENUMS
 //
@@ -52,10 +54,8 @@ static gboolean wintc_ctl_list_view_draw(
 static void wintc_ctl_list_view_commit_icon_drag(
     WinTCCtlListView* list_view
 );
-static void wintc_ctl_list_view_create_large_icon(
-    WinTCCtlListView* list_view,
-    const gchar*      icon_name,
-    const gchar*      text
+static WinTCCtlListViewIcon* wintc_ctl_list_view_create_large_icon(
+    WinTCCtlListView* list_view
 );
 static WinTCCtlListViewIcon* wintc_ctl_list_view_hit_test(
     WinTCCtlListView* list_view,
@@ -74,13 +74,23 @@ static void wintc_ctl_list_view_render_large_icon(
 static void wintc_ctl_list_view_reset_hit_state(
     WinTCCtlListView* list_view
 );
+static void wintc_ctl_list_view_set_icon_pixbuf(
+    WinTCCtlListView*     list_view,
+    WinTCCtlListViewIcon* icon,
+    GdkPixbuf*            pixbuf
+);
 static void wintc_ctl_list_view_set_icon_text(
     WinTCCtlListView*     list_view,
     WinTCCtlListViewIcon* icon,
-    const gchar*          text
+    gchar*                text
 );
 static void wintc_ctl_list_view_update_dnd_state(
     WinTCCtlListView* list_view
+);
+static void wintc_ctl_list_view_update_icon(
+    WinTCCtlListView*     list_view,
+    WinTCCtlListViewIcon* icon,
+    GtkTreeIter*          iter
 );
 
 static void on_list_view_drag_end(
@@ -122,6 +132,31 @@ static gboolean on_list_view_motion_notify_event(
     gpointer   user_data
 );
 
+static void on_model_row_changed(
+    GtkTreeModel* tree_model,
+    GtkTreePath*  path,
+    GtkTreeIter*  iter,
+    gpointer      user_data
+);
+static void on_model_row_deleted(
+    GtkTreeModel* tree_model,
+    GtkTreePath*  path,
+    gpointer      user_data
+);
+static void on_model_row_inserted(
+    GtkTreeModel* tree_model,
+    GtkTreePath*  path,
+    GtkTreeIter*  iter,
+    gpointer      user_data
+);
+static void on_model_rows_reordered(
+    GtkTreeModel* tree_model,
+    GtkTreePath*  path,
+    GtkTreeIter*  iter,
+    gpointer      new_order,
+    gpointer      user_data
+);
+
 //
 // GTK OOP CLASS/INSTANCE DEFINITIONS
 //
@@ -136,6 +171,18 @@ struct _WinTCCtlListView
 
     GList* list_icons;
     GList* list_selected;
+
+    // Model related
+    //
+    GtkTreeModel* model;
+    gint          col_pixbuf;
+    gint          col_text;
+
+    GSequence* seq_icons;
+
+    gulong sigid_row_changed;
+    gulong sigid_row_deleted;
+    gulong sigid_row_inserted;
 
     // UI State
     //
@@ -179,6 +226,10 @@ static void wintc_ctl_list_view_init(
     WinTCCtlListView* self
 )
 {
+    self->col_pixbuf = -1;
+    self->col_text   = -1;
+    self->seq_icons = g_sequence_new(NULL);
+
     gtk_widget_add_events(
         GTK_WIDGET(self),
         GDK_BUTTON_PRESS_MASK   |
@@ -230,11 +281,6 @@ static void wintc_ctl_list_view_init(
         G_CALLBACK(on_list_view_leave_notify_event),
         NULL
     );
-
-    wintc_ctl_list_view_create_large_icon(self, "folder", "My Stuff");
-    wintc_ctl_list_view_create_large_icon(self, "computer", "My Computer");
-    wintc_ctl_list_view_create_large_icon(self, "folder-documents", "My Documents");
-    wintc_ctl_list_view_create_large_icon(self, "user-trash", "Recycle Bin");
 }
 
 //
@@ -258,6 +304,11 @@ static gboolean wintc_ctl_list_view_draw(
     {
         WinTCCtlListViewIcon* large_icon =
             (WinTCCtlListViewIcon*) iter->data;
+
+        if (!ICON_IS_COMMITTED(large_icon))
+        {
+            continue;
+        }
 
         gboolean render_selected =
             large_icon == list_view->dnd_icon_target ||
@@ -388,6 +439,100 @@ void wintc_ctl_list_view_enable_drag_source(
     wintc_ctl_list_view_update_dnd_state(list_view);
 }
 
+GtkTreeModel* wintc_ctl_list_view_get_model(
+    WinTCCtlListView* list_view
+)
+{
+    return list_view->model;
+}
+
+gint wintc_ctl_list_view_get_pixbuf_column(
+    WinTCCtlListView* list_view
+)
+{
+    return list_view->col_pixbuf;
+}
+
+gint wintc_ctl_list_view_get_text_column(
+    WinTCCtlListView* list_view
+)
+{
+    return list_view->col_text;
+}
+
+void wintc_ctl_list_view_set_model(
+    WinTCCtlListView* list_view,
+    GtkTreeModel*     model
+)
+{
+    //
+    // FIXME: Unset existing model
+    //
+
+    list_view->model = model;
+
+    list_view->sigid_row_changed =
+        g_signal_connect_object(
+            list_view->model,
+            "row-changed",
+            G_CALLBACK(on_model_row_changed),
+            list_view,
+            G_CONNECT_DEFAULT
+        );
+    list_view->sigid_row_deleted =
+        g_signal_connect_object(
+            list_view->model,
+            "row-deleted",
+            G_CALLBACK(on_model_row_deleted),
+            list_view,
+            G_CONNECT_DEFAULT
+        );
+    list_view->sigid_row_inserted =
+        g_signal_connect_object(
+            list_view->model,
+            "row-inserted",
+            G_CALLBACK(on_model_row_inserted),
+            list_view,
+            G_CONNECT_DEFAULT
+        );
+    list_view->sigid_row_inserted =
+        g_signal_connect_object(
+            list_view->model,
+            "rows-reordered",
+            G_CALLBACK(on_model_rows_reordered),
+            list_view,
+            G_CONNECT_DEFAULT
+        );
+
+    //
+    // FIXME: Iterate over model
+    //
+}
+
+void wintc_ctl_list_view_set_pixbuf_column(
+    WinTCCtlListView* list_view,
+    gint              column
+)
+{
+    list_view->col_pixbuf = column;
+
+    //
+    // FIXME: Update existing icons now
+    //
+}
+
+void wintc_ctl_list_view_set_text_column(
+    WinTCCtlListView* list_view,
+    gint              column
+)
+{
+    list_view->col_text = column;
+
+    //
+    // FIXME: Update existing icons now
+    //
+}
+
 void wintc_ctl_list_view_unset_drag_dest(
     WinTCCtlListView* list_view
 )
@@ -443,10 +588,8 @@ static void wintc_ctl_list_view_commit_icon_drag(
     }
 }
 
-static void wintc_ctl_list_view_create_large_icon(
-    WinTCCtlListView* list_view,
-    const gchar*      icon_name,
-    const gchar*      text
+static WinTCCtlListViewIcon* wintc_ctl_list_view_create_large_icon(
+    WINTC_UNUSED(WinTCCtlListView* list_view)
 )
 {
     WinTCCtlListViewIcon* large_icon = g_new0(WinTCCtlListViewIcon, 1);
@@ -454,25 +597,7 @@ static void wintc_ctl_list_view_create_large_icon(
     large_icon->hitbox_icon.width  = HITBOX_LARGE_ICON;
     large_icon->hitbox_icon.height = HITBOX_LARGE_ICON;
 
-    large_icon->icon =
-        gtk_icon_theme_load_icon(
-            gtk_icon_theme_get_default(),
-            icon_name,
-            32,
-            GTK_ICON_LOOKUP_FORCE_SIZE,
-            NULL
-        );
-
-    wintc_ctl_list_view_set_icon_text(
-        list_view,
-        large_icon,
-        text
-    );
-
-    list_view->list_icons =
-        g_list_append(list_view->list_icons, large_icon);
-
-    gtk_widget_queue_draw(GTK_WIDGET(list_view));
+    return large_icon;
 }
 
 static WinTCCtlListViewIcon* wintc_ctl_list_view_hit_test(
@@ -632,20 +757,44 @@ static void wintc_ctl_list_view_reset_hit_state(
     list_view->dnd_icon_target = NULL;
 }
 
+static void wintc_ctl_list_view_set_icon_pixbuf(
+    WINTC_UNUSED(WinTCCtlListView* list_view),
+    WinTCCtlListViewIcon* icon,
+    GdkPixbuf*            pixbuf
+)
+{
+    if (icon->icon)
+    {
+        g_clear_object(&(icon->icon));
+    }
+
+    if (!pixbuf)
+    {
+        return;
+    }
+
+    icon->icon = pixbuf; // Ref should've already been taken from model_get
+}
+
 static void wintc_ctl_list_view_set_icon_text(
     WinTCCtlListView*     list_view,
     WinTCCtlListViewIcon* icon,
-    const gchar*          text
+    gchar*                text
 )
 {
     PangoContext* ctx = gtk_widget_get_pango_context(GTK_WIDGET(list_view));
 
     g_free(icon->text);
-    icon->text = g_strdup(text);
+    icon->text = text; // Ref should've already been taken from model_get
 
     if (icon->surface_text_shadow)
     {
         cairo_surface_destroy(icon->surface_text_shadow);
+    }
+
+    if (!text)
+    {
+        return;
     }
 
     // Retrieve the extents for the text used for the shadow (ink extents) and
@@ -790,6 +939,49 @@ static void wintc_ctl_list_view_update_dnd_state(
                 list_view->dnd_dest_targets
             );
         }
+    }
+}
+
+static void wintc_ctl_list_view_update_icon(
+    WinTCCtlListView*     list_view,
+    WinTCCtlListViewIcon* icon,
+    GtkTreeIter*          iter
+)
+{
+    if (list_view->col_pixbuf > -1)
+    {
+        GdkPixbuf* pixbuf = NULL;
+
+        gtk_tree_model_get(
+            list_view->model,
+            iter,
+            list_view->col_pixbuf, &pixbuf,
+            -1
+        );
+
+        wintc_ctl_list_view_set_icon_pixbuf(
+            list_view,
+            icon,
+            pixbuf
+        );
+    }
+
+    if (list_view->col_text > -1)
+    {
+        gchar* text = NULL;
+
+        gtk_tree_model_get(
+            list_view->model,
+            iter,
+            list_view->col_text, &text,
+            -1
+        );
+
+        wintc_ctl_list_view_set_icon_text(
+            list_view,
+            icon,
+            text
+        );
     }
 }
 
@@ -1050,4 +1242,159 @@ static gboolean on_list_view_motion_notify_event(
     gtk_widget_queue_draw(widget);
 
     return TRUE;
+}
+
+static void on_model_row_changed(
+    WINTC_UNUSED(GtkTreeModel* tree_model),
+    GtkTreePath* path,
+    GtkTreeIter* iter,
+    gpointer     user_data
+)
+{
+    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(user_data);
+
+    if (gtk_tree_path_get_depth(path) > 1)
+    {
+        return;
+    }
+
+    gint idx = gtk_tree_path_get_indices(path)[0];
+
+    GSequenceIter* iter_seq =
+        g_sequence_get_iter_at_pos(
+            list_view->seq_icons,
+            idx
+        );
+
+    WinTCCtlListViewIcon* large_icon = g_sequence_get(iter_seq);
+
+    wintc_ctl_list_view_update_icon(list_view, large_icon, iter);
+
+    gtk_widget_queue_draw(GTK_WIDGET(list_view));
+
+    /**
+    large_icon->icon =
+        gtk_icon_theme_load_icon(
+            gtk_icon_theme_get_default(),
+            icon_name,
+            32,
+            GTK_ICON_LOOKUP_FORCE_SIZE,
+            NULL
+        );
+
+    wintc_ctl_list_view_set_icon_text(
+        list_view,
+        large_icon,
+        text
+    );
+    */
+}
+
+static void on_model_row_deleted(
+    WINTC_UNUSED(GtkTreeModel* tree_model),
+    GtkTreePath* path,
+    gpointer     user_data
+)
+{
+    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(user_data);
+
+    if (gtk_tree_path_get_depth(path) > 1)
+    {
+        return;
+    }
+
+    gint idx = gtk_tree_path_get_indices(path)[0];
+
+    GSequenceIter* iter =
+        g_sequence_get_iter_at_pos(
+            list_view->seq_icons,
+            idx
+        );
+
+    WinTCCtlListViewIcon* large_icon = g_sequence_get(iter);
+
+    g_sequence_remove(iter);
+
+    list_view->list_icons =
+        g_list_delete_link(
+            list_view->list_icons,
+            g_list_find(
+                list_view->list_icons,
+                large_icon
+            )
+        );
+
+    //
+    // FIXME: Free large icon
+    //
+
+    gtk_widget_queue_draw(GTK_WIDGET(list_view));
+}
+
+static void on_model_row_inserted(
+    WINTC_UNUSED(GtkTreeModel* tree_model),
+    GtkTreePath*  path,
+    WINTC_UNUSED(GtkTreeIter* iter),
+    gpointer      user_data
+)
+{
+    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(user_data);
+
+    if (gtk_tree_path_get_depth(path) > 1)
+    {
+        return;
+    }
+
+    gint idx = gtk_tree_path_get_indices(path)[0];
+
+    WinTCCtlListViewIcon* large_icon =
+        wintc_ctl_list_view_create_large_icon(list_view);
+
+    GSequenceIter* iter_seq =
+        g_sequence_get_iter_at_pos(list_view->seq_icons, idx);
+
+    g_sequence_insert_before(iter_seq, large_icon);
+
+    list_view->list_icons =
+        g_list_prepend(list_view->list_icons, large_icon);
+
+    gtk_widget_queue_draw(GTK_WIDGET(list_view));
+}
+
+static void on_model_rows_reordered(
+    WINTC_UNUSED(GtkTreeModel* tree_model),
+    GtkTreePath* path,
+    GtkTreeIter* iter,
+    gpointer     new_order,
+    gpointer     user_data
+)
+{
+    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(user_data);
+
+    if (gtk_tree_path_get_depth(path) > 0)
+    {
+        return;
+    }
+
+    // Create a new GSequence to replace the existing one
+    //
+    gint       len = gtk_tree_model_iter_n_children(
+                         list_view->model,
+                         iter
+                     );
+    GSequence* seq = g_sequence_new(NULL);
+
+    for (gint i = 0; i < len; i++)
+    {
+        gint old_idx = ((gint*) new_order)[i];
+
+        GSequenceIter* iter = g_sequence_get_iter_at_pos(list_view->seq_icons, old_idx);
+
+        WinTCCtlListViewIcon* large_icon = g_sequence_get(iter);
+
+        g_sequence_append(seq, large_icon);
+    }
+
+    g_sequence_free(list_view->seq_icons);
+    list_view->seq_icons = seq;
 }

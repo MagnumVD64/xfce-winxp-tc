@@ -54,6 +54,30 @@ void wintc_ctl_list_view_enable_drag_source(
     gint                  n_targets,
     GdkDragAction         actions
 );
+
+GtkTreeModel* wintc_ctl_list_view_get_model(
+    WinTCCtlListView* list_view
+);
+gint wintc_ctl_list_view_get_pixbuf_column(
+    WinTCCtlListView* list_view
+);
+gint wintc_ctl_list_view_get_text_column(
+    WinTCCtlListView* list_view
+);
+
+void wintc_ctl_list_view_set_model(
+    WinTCCtlListView* list_view,
+    GtkTreeModel*     model
+);
+void wintc_ctl_list_view_set_pixbuf_column(
+    WinTCCtlListView* list_view,
+    gint              column
+);
+void wintc_ctl_list_view_set_text_column(
+    WinTCCtlListView* list_view,
+    gint              column
+);
+
 void wintc_ctl_list_view_unset_drag_dest(
     WinTCCtlListView* list_view
 );

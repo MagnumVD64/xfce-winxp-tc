@@ -13,12 +13,24 @@
 //
 enum
 {
+    COL_TEXT,
+    COL_PIXBUF
+};
+
+enum
+{
     TARGET_TEXT
 };
 
 //
 // FORWARD DECLARATIONS
 //
+static void wintc_list_view_test_window_insert_row(
+    WinTCListViewTestWindow* wnd,
+    const gchar*             text,
+    const gchar*             icon_name
+);
+
 static void on_list_view_drag_data_get(
     GtkWidget*        widget,
     GdkDragContext*   context,
@@ -80,6 +92,8 @@ struct _WinTCListViewTestWindowClass
 struct _WinTCListViewTestWindow
 {
     GtkApplicationWindow __parent__;
+
+    GtkListStore* model;
 };
 
 //
@@ -116,6 +130,29 @@ static void wintc_list_view_test_window_init(
         list_view
     );
 
+    // Set up list store
+    //
+    self->model =
+        gtk_list_store_new(
+            2,
+            G_TYPE_STRING,
+            GDK_TYPE_PIXBUF
+        );
+
+    wintc_ctl_list_view_set_text_column(
+        WINTC_CTL_LIST_VIEW(list_view), COL_TEXT
+    );
+    wintc_ctl_list_view_set_pixbuf_column(
+        WINTC_CTL_LIST_VIEW(list_view), COL_PIXBUF
+    );
+
+    wintc_ctl_list_view_set_model(
+        WINTC_CTL_LIST_VIEW(list_view),
+        GTK_TREE_MODEL(self->model)
+    );
+
+    // Set up DND stuff
+    //
 #ifdef ENABLE_DND
     wintc_ctl_list_view_enable_drag_dest(
         WINTC_CTL_LIST_VIEW(list_view),
@@ -155,6 +192,14 @@ static void wintc_list_view_test_window_init(
         G_CALLBACK(on_list_view_drag_motion),
         NULL
     );
+
+    // Add items
+    //
+    wintc_list_view_test_window_insert_row(
+        self,
+        "Recycle Bin",
+        "user-trash"
+    );
 }
 
 //
@@ -172,6 +217,51 @@ GtkWidget* wintc_list_view_test_window_new(
             NULL
         )
     );
+}
+
+//
+// PRIVATE FUNCTIONS
+//
+static void wintc_list_view_test_window_insert_row(
+    WinTCListViewTestWindow* wnd,
+    const gchar*             text,
+    const gchar*             icon_name
+)
+{
+    GError* error = NULL;
+
+    // Load the icon
+    //
+    GdkPixbuf* pixbuf =
+        gtk_icon_theme_load_icon(
+            gtk_icon_theme_get_default(),
+            icon_name,
+            32,
+            GTK_ICON_LOOKUP_FORCE_SIZE,
+            &error
+        );
+
+    if (!pixbuf)
+    {
+        wintc_log_error_and_clear(&error);
+        return;
+    }
+
+    // Insert new row
+    //
+    GtkTreeIter iter;
+
+    gtk_list_store_append(wnd->model, &iter);
+
+    gtk_list_store_set(
+        wnd->model,
+        &iter,
+        COL_TEXT,   text,
+        COL_PIXBUF, pixbuf,
+        -1
+    );
+
+    g_object_unref(pixbuf);
 }
 
 //

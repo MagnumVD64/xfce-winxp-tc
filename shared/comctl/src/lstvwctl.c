@@ -63,6 +63,10 @@ static void wintc_ctl_list_view_commit_icon_drag(
 static WinTCCtlListViewIcon* wintc_ctl_list_view_create_large_icon(
     WinTCCtlListView* list_view
 );
+static GtkTreePath* wintc_ctl_list_view_get_path_for_icon(
+    WinTCCtlListView*     list_view,
+    WinTCCtlListViewIcon* icon
+);
 static WinTCCtlListViewIcon* wintc_ctl_list_view_hit_test(
     WinTCCtlListView* list_view,
     gint              x,
@@ -479,6 +483,21 @@ void wintc_ctl_list_view_enable_drag_source(
     wintc_ctl_list_view_update_dnd_state(list_view);
 }
 
+GtkTreePath* wintc_ctl_list_view_get_drop_target(
+    WinTCCtlListView* list_view
+)
+{
+    if (!(list_view->dnd_icon_target))
+    {
+        return NULL;
+    }
+
+    return wintc_ctl_list_view_get_path_for_icon(
+        list_view,
+        list_view->dnd_icon_target
+    );
+}
+
 GtkTreeModel* wintc_ctl_list_view_get_model(
     WinTCCtlListView* list_view
 )
@@ -638,6 +657,19 @@ static WinTCCtlListViewIcon* wintc_ctl_list_view_create_large_icon(
     large_icon->hitbox_icon.height = HITBOX_LARGE_ICON;
 
     return large_icon;
+}
+
+static GtkTreePath* wintc_ctl_list_view_get_path_for_icon(
+    WinTCCtlListView*     list_view,
+    WinTCCtlListViewIcon* icon
+)
+{
+    GSequenceIter* iter_seq =
+        wintc_sequence_find(list_view->seq_icons, icon);
+
+    gint idx = g_sequence_iter_get_position(iter_seq);
+
+    return gtk_tree_path_new_from_indices(idx, -1);
 }
 
 static WinTCCtlListViewIcon* wintc_ctl_list_view_hit_test(
@@ -1196,13 +1228,11 @@ static gboolean on_list_view_key_press_event(
         //
         for (GList* iter = list_view->list_selected; iter; iter = iter->next)
         {
-            GSequenceIter* iter_seq =
-                wintc_sequence_find(list_view->seq_icons, iter->data);
-
-            gint idx = g_sequence_iter_get_position(iter_seq);
-
             GtkTreePath* path =
-                gtk_tree_path_new_from_indices(idx, -1);
+                wintc_ctl_list_view_get_path_for_icon(
+                    list_view,
+                    (WinTCCtlListViewIcon*) iter->data
+                );
 
             g_signal_emit(
                 list_view,

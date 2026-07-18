@@ -55,6 +55,9 @@ void wintc_ctl_list_view_enable_drag_source(
     GdkDragAction         actions
 );
 
+GtkTreePath* wintc_ctl_list_view_get_drop_target(
+    WinTCCtlListView* list_view
+);
 GtkTreeModel* wintc_ctl_list_view_get_model(
     WinTCCtlListView* list_view
 );

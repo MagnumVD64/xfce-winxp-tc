@@ -189,7 +189,7 @@ static void wintc_list_view_test_window_init(
         list_view,
         "drag-drop",
         G_CALLBACK(on_list_view_drag_drop),
-        NULL
+        self
     );
     g_signal_connect(
         list_view,
@@ -325,9 +325,46 @@ static gboolean on_list_view_drag_drop(
     WINTC_UNUSED(int x),
     WINTC_UNUSED(int y),
     guint           time,
-    WINTC_UNUSED(gpointer user_data)
+    gpointer        user_data
 )
 {
+    WinTCListViewTestWindow* wnd =
+        WINTC_LIST_VIEW_TEST_WINDOW(user_data);
+    WinTCCtlListView* list_view =
+        WINTC_CTL_LIST_VIEW(widget);
+
+    GtkTreePath* path =
+        wintc_ctl_list_view_get_drop_target(list_view);
+
+    if (path)
+    {
+        GtkTreeIter   iter;
+        GtkTreeModel* model = GTK_TREE_MODEL(wnd->model);
+        gchar*        text = NULL;
+
+        gtk_tree_model_get_iter(
+            model,
+            &iter,
+            path
+        );
+
+        gtk_tree_model_get(
+            model,
+            &iter,
+            COL_TEXT, &text,
+            -1
+        );
+
+        g_message("Dropped on: %s", text);
+
+        g_free(text);
+        gtk_tree_path_free(path);
+    }
+    else
+    {
+        g_message("%s", "Dropped on: view");
+    }
+
     gtk_drag_get_data(
         widget,
         context,

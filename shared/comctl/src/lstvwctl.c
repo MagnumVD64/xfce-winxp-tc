@@ -47,6 +47,8 @@ typedef struct _WinTCCtlListViewIcon
     GdkRectangle hitbox_icon;
     GdkRectangle hitbox_label;
 
+    GdkPoint offset_label_render;
+
     // Drawing cache
     //
     cairo_surface_t* surface_text_shadow;
@@ -64,6 +66,9 @@ static void wintc_ctl_list_view_commit_icon_drag(
     WinTCCtlListView* list_view
 );
 static WinTCCtlListViewIcon* wintc_ctl_list_view_create_large_icon(
+    WinTCCtlListView* list_view
+);
+static PangoLayout* wintc_ctl_list_view_create_pango_layout(
     WinTCCtlListView* list_view
 );
 static void wintc_ctl_list_view_emit_item_activated(
@@ -798,6 +803,22 @@ static WinTCCtlListViewIcon* wintc_ctl_list_view_create_large_icon(
     return large_icon;
 }
 
+static PangoLayout* wintc_ctl_list_view_create_pango_layout(
+    WinTCCtlListView* list_view
+)
+{
+    PangoContext* ctx    = gtk_widget_get_pango_context(GTK_WIDGET(list_view));
+    PangoLayout*  layout = pango_layout_new(ctx);
+
+    pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
+    pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+    pango_layout_set_height(layout, -3);
+    pango_layout_set_width(layout, CELL_SIZE_LARGE_ICON * PANGO_SCALE);
+    pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
+
+    return layout;
+}
+
 static void wintc_ctl_list_view_emit_item_activated(
     WinTCCtlListView*     list_view,
     WinTCCtlListViewIcon* icon
@@ -994,8 +1015,7 @@ static void wintc_ctl_list_view_render_large_icon(
 
     // Icon label
     //
-    PangoContext* ctx    = gtk_widget_get_pango_context(GTK_WIDGET(list_view));
-    PangoLayout*  layout = pango_layout_new(ctx);
+    PangoLayout* layout = wintc_ctl_list_view_create_pango_layout(list_view);
 
     pango_layout_set_text(layout, large_icon->text, -1);
 
@@ -1010,9 +1030,11 @@ static void wintc_ctl_list_view_render_large_icon(
                 cr,
                 large_icon->surface_text_shadow,
                 (gdouble) large_icon->hitbox_label.x +
-                offset_x - LABEL_TEXT_SHADOW_OFFSET,
+                offset_x - LABEL_TEXT_SHADOW_OFFSET -
+                large_icon->offset_label_render.x,
                 (gdouble) large_icon->hitbox_label.y +
-                offset_y - LABEL_TEXT_SHADOW_OFFSET
+                offset_y - LABEL_TEXT_SHADOW_OFFSET -
+                large_icon->offset_label_render.y
             );
         }
 
@@ -1040,8 +1062,10 @@ static void wintc_ctl_list_view_render_large_icon(
     cairo_set_source_rgb(cr, 1.0f, 1.0f, 1.0f);
     cairo_move_to(
         cr,
-        large_icon->hitbox_label.x + offset_x,
-        large_icon->hitbox_label.y + offset_y
+        large_icon->hitbox_label.x +
+        offset_x - large_icon->offset_label_render.x,
+        large_icon->hitbox_label.y +
+        offset_y - large_icon->offset_label_render.y
     );
 
     pango_cairo_show_layout(cr, layout);
@@ -1085,8 +1109,6 @@ static void wintc_ctl_list_view_set_icon_text(
     gchar*                text
 )
 {
-    PangoContext* ctx = gtk_widget_get_pango_context(GTK_WIDGET(list_view));
-
     g_free(icon->text);
     icon->text = text; // Ref should've already been taken from model_get
 
@@ -1104,7 +1126,7 @@ static void wintc_ctl_list_view_set_icon_text(
     // hitbox (logical extents)
     //
     PangoRectangle extents;
-    PangoLayout*   layout = pango_layout_new(ctx);
+    PangoLayout*   layout = wintc_ctl_list_view_create_pango_layout(list_view);
 
     pango_layout_set_text(layout, icon->text, -1);
 
@@ -1120,6 +1142,9 @@ static void wintc_ctl_list_view_set_icon_text(
     icon->hitbox_label.y =
         icon->hitbox_icon.y + 35;
 
+    icon->offset_label_render.x = extents.x;
+//    icon->offset_label_render.y = extents.y;
+
     // Render to a backing image surface
     //
     cairo_t* cr;
@@ -1130,8 +1155,8 @@ static void wintc_ctl_list_view_set_icon_text(
     icon->surface_text_shadow =
         cairo_image_surface_create(
             CAIRO_FORMAT_ARGB32,
-            extents.width  + (LABEL_TEXT_SHADOW_RADIUS * 4),
-            extents.height + (LABEL_TEXT_SHADOW_RADIUS * 4)
+            extents.x + extents.width  + (LABEL_TEXT_SHADOW_RADIUS * 4),
+            extents.y + extents.height + (LABEL_TEXT_SHADOW_RADIUS * 4)
         );
 
     surface_height = cairo_image_surface_get_height(icon->surface_text_shadow);

@@ -558,6 +558,23 @@ GtkOrientation wintc_ctl_list_view_get_orientation(
     return list_view->orientation;
 }
 
+GtkTreePath* wintc_ctl_list_view_get_path_at_pos(
+    WinTCCtlListView* list_view,
+    gint              x,
+    gint              y
+)
+{
+    WinTCCtlListViewIcon* icon =
+        wintc_ctl_list_view_hit_test(list_view, x, y, NULL);
+
+    if (!icon)
+    {
+        return NULL;
+    }
+
+    return wintc_ctl_list_view_get_path_for_icon(list_view, icon);
+}
+
 gint wintc_ctl_list_view_get_pixbuf_column(
     WinTCCtlListView* list_view
 )

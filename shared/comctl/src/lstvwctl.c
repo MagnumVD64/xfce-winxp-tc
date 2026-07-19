@@ -88,6 +88,10 @@ static void wintc_ctl_list_view_move_icon(
     gint                  x,
     gint                  y
 );
+static void wintc_ctl_list_view_raise_icon(
+    WinTCCtlListView*     list_view,
+    WinTCCtlListViewIcon* icon
+);
 static void wintc_ctl_list_view_render_large_icon(
     WinTCCtlListView*         list_view,
     WinTCCtlListViewIcon*     large_icon,
@@ -371,9 +375,14 @@ static gboolean wintc_ctl_list_view_draw(
     cairo_paint(cr);
     cairo_restore(cr);
 
-    // Paint icons
+    // Paint icons - painting from end to start because the first item in the
+    // list is the highest z-order
     //
-    for (GList* iter = list_view->list_icons; iter; iter = iter->next)
+    for (
+        GList* iter = g_list_last(list_view->list_icons);
+        iter;
+        iter = iter->prev
+    )
     {
         WinTCCtlListViewIcon* large_icon =
             (WinTCCtlListViewIcon*) iter->data;
@@ -784,6 +793,19 @@ static void wintc_ctl_list_view_move_icon(
 
     icon->hitbox_label.x += dx;
     icon->hitbox_label.y += dy;
+}
+
+static void wintc_ctl_list_view_raise_icon(
+    WinTCCtlListView*     list_view,
+    WinTCCtlListViewIcon* icon
+)
+{
+    GList* el = g_list_find(list_view->list_icons, icon);
+
+    list_view->list_icons =
+        g_list_remove_link(list_view->list_icons, el);
+    list_view->list_icons =
+        g_list_concat(el, list_view->list_icons);
 }
 
 static void wintc_ctl_list_view_render_large_icon(
@@ -1199,6 +1221,21 @@ static gboolean on_list_view_button_release_event(
 {
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
 
+    // Raise z-order for selected items
+    //
+    if (list_view->hit_icon)
+    {
+        for (GList* iter = list_view->list_selected; iter; iter = iter->next)
+        {
+            wintc_ctl_list_view_raise_icon(
+                list_view,
+                (WinTCCtlListViewIcon*) iter->data
+            );
+        }
+    }
+
+    // Commit a drag if there is one
+    //
     if (list_view->hit_dragging)
     {
         wintc_ctl_list_view_commit_icon_drag(list_view);
@@ -1225,6 +1262,14 @@ static void on_list_view_drag_end(
     //
     if (list_view->dnd_ctx)
     {
+        for (GList* iter = list_view->list_selected; iter; iter = iter->next)
+        {
+            wintc_ctl_list_view_raise_icon(
+                list_view,
+                (WinTCCtlListViewIcon*) iter->data
+            );
+        }
+
         wintc_ctl_list_view_commit_icon_drag(list_view);
         wintc_ctl_list_view_reset_hit_state(list_view);
     }

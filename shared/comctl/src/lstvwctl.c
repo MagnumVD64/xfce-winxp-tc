@@ -612,6 +612,36 @@ gint wintc_ctl_list_view_get_text_column(
     return list_view->col_text;
 }
 
+void wintc_ctl_list_view_select_path(
+    WinTCCtlListView* list_view,
+    GtkTreePath*      path
+)
+{
+    if (gtk_tree_path_get_depth(path) > 1)
+    {
+        return;
+    }
+
+    // Retrieve the icon we want
+    //
+    gint idx = gtk_tree_path_get_indices(path)[0];
+
+    GSequenceIter* iter_seq =
+        g_sequence_get_iter_at_pos(list_view->seq_icons, idx);
+
+    WinTCCtlListViewIcon* icon = g_sequence_get(iter_seq);
+
+    // Handle selection
+    //
+    if (!g_list_find(list_view->list_selected, icon))
+    {
+        list_view->list_selected =
+            g_list_prepend(list_view->list_selected, icon);
+
+        gtk_widget_queue_draw(GTK_WIDGET(list_view));
+    }
+}
+
 void wintc_ctl_list_view_set_model(
     WinTCCtlListView* list_view,
     GtkTreeModel*     model
@@ -695,6 +725,14 @@ void wintc_ctl_list_view_set_text_column(
     //
     // FIXME: Update existing icons now
     //
+}
+
+void wintc_ctl_list_view_unselect_all(
+    WinTCCtlListView* list_view
+)
+{
+    g_clear_list(&(list_view->list_selected), NULL);
+    gtk_widget_queue_draw(GTK_WIDGET(list_view));
 }
 
 void wintc_ctl_list_view_unset_drag_dest(

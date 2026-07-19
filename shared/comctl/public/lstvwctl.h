@@ -79,6 +79,11 @@ gint wintc_ctl_list_view_get_text_column(
     WinTCCtlListView* list_view
 );
 
+void wintc_ctl_list_view_select_path(
+    WinTCCtlListView* list_view,
+    GtkTreePath*      path
+);
+
 void wintc_ctl_list_view_set_model(
     WinTCCtlListView* list_view,
     GtkTreeModel*     model
@@ -94,6 +99,10 @@ void wintc_ctl_list_view_set_pixbuf_column(
 void wintc_ctl_list_view_set_text_column(
     WinTCCtlListView* list_view,
     gint              column
+);
+
+void wintc_ctl_list_view_unselect_all(
+    WinTCCtlListView* list_view
 );
 
 void wintc_ctl_list_view_unset_drag_dest(

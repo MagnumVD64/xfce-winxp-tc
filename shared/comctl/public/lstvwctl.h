@@ -67,6 +67,9 @@ GtkOrientation wintc_ctl_list_view_get_orientation(
 gint wintc_ctl_list_view_get_pixbuf_column(
     WinTCCtlListView* list_view
 );
+GList* wintc_ctl_list_view_get_selected_items(
+    WinTCCtlListView* list_view
+);
 gint wintc_ctl_list_view_get_text_column(
     WinTCCtlListView* list_view
 );

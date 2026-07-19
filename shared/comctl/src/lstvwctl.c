@@ -565,6 +565,29 @@ gint wintc_ctl_list_view_get_pixbuf_column(
     return list_view->col_pixbuf;
 }
 
+GList* wintc_ctl_list_view_get_selected_items(
+    WinTCCtlListView* list_view
+)
+{
+    GList* ret = NULL;
+
+    for (GList* iter = list_view->list_selected; iter; iter = iter->next)
+    {
+        ret =
+            g_list_prepend(
+                ret,
+                wintc_ctl_list_view_get_path_for_icon(
+                    list_view,
+                    (WinTCCtlListViewIcon*) iter->data
+                )
+            );
+    }
+
+    ret = g_list_reverse(ret);
+
+    return ret;
+}
+
 gint wintc_ctl_list_view_get_text_column(
     WinTCCtlListView* list_view
 )

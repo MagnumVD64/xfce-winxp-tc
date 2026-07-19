@@ -1352,7 +1352,7 @@ static gboolean on_list_view_button_press_event(
     GdkEventButton*   e         = (GdkEventButton*) event;
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
 
-    if (e->button & GDK_BUTTON1_MASK)
+    if (e->button != GDK_BUTTON_PRIMARY)
     {
         return FALSE;
     }
@@ -1428,7 +1428,13 @@ static gboolean on_list_view_button_release_event(
     WINTC_UNUSED(gpointer   user_data)
 )
 {
+    GdkEventButton*   e         = (GdkEventButton*) event;
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
+
+    if (e->button != GDK_BUTTON_PRIMARY)
+    {
+        return FALSE;
+    }
 
     // Raise z-order for selected items
     //

@@ -358,17 +358,17 @@ static void wintc_sh_list_view_behaviour_constructed(
 
     // Enable drag destination
     //
-    wintc_ctl_list_view_enable_drag_source(
-        WINTC_CTL_LIST_VIEW(behaviour->list_view),
-        NULL,
-        0,
-        GDK_ACTION_COPY | GDK_ACTION_MOVE
-    );
     wintc_ctl_list_view_enable_drag_dest(
         WINTC_CTL_LIST_VIEW(behaviour->list_view),
         S_DRAG_TARGETS,
         G_N_ELEMENTS(S_DRAG_TARGETS),
         GDK_ACTION_COPY
+    );
+    wintc_ctl_list_view_enable_drag_source(
+        WINTC_CTL_LIST_VIEW(behaviour->list_view),
+        NULL,
+        0,
+        GDK_ACTION_COPY | GDK_ACTION_MOVE
     );
 
     // Attach signals
@@ -525,8 +525,6 @@ GList* wintc_sh_list_view_behaviour_get_selected_items(
             2, &hash,
             -1
         );
-
-        WINTC_LOG_DEBUG("shell: lstvw - append item to op: %u", hash);
 
         item_hashes =
             g_list_prepend(
@@ -910,10 +908,16 @@ static void on_list_view_drag_begin(
     // Query what drag targets are actually available for the items in this
     // view
     //
-    GtkTargetList* target_list = gtk_target_list_new(NULL, 0);
+    GtkTargetList* target_list =
+        wintc_ctl_list_view_get_source_target_list(
+            WINTC_CTL_LIST_VIEW(widget)
+        );
 
     for (gsize i = 0; i < G_N_ELEMENTS(S_DRAG_SOURCES); i++)
     {
+        GdkAtom target =
+            gdk_atom_intern_static_string(S_DRAG_SOURCES[i].target);
+
         if (
             wintc_ishext_view_drag_test(
                 behaviour->current_view,
@@ -924,16 +928,20 @@ static void on_list_view_drag_begin(
         {
             gtk_target_list_add(
                 target_list,
-                gdk_atom_intern_static_string(S_DRAG_SOURCES[i].target),
+                target,
                 S_DRAG_SOURCES[i].flags,
                 S_DRAG_SOURCES[i].info
             );
         }
+        else
+        {
+            gtk_target_list_remove(
+                target_list,
+                target
+            );
+        }
     }
 
-    gtk_drag_source_set_target_list(widget, target_list);
-
-    gtk_target_list_unref(target_list);
     g_list_free(item_hashes);
 }
 

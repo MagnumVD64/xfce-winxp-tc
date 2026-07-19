@@ -130,7 +130,14 @@ static void wintc_ctl_list_view_update_icon(
     WinTCCtlListViewIcon* icon,
     GtkTreeIter*          iter
 );
-
+static gboolean on_list_view_drag_drop(
+    GtkWidget*      widget,
+    GdkDragContext* context,
+    gint            x,
+    gint            y,
+    guint           time,
+    gpointer        user_data
+);
 static void on_list_view_drag_end(
     GtkWidget*      widget,
     GdkDragContext* context,
@@ -327,6 +334,12 @@ static void wintc_ctl_list_view_init(
         self,
         "button-release-event",
         G_CALLBACK(on_list_view_button_release_event),
+        NULL
+    );
+    g_signal_connect(
+        self,
+        "drag-drop",
+        G_CALLBACK(on_list_view_drag_drop),
         NULL
     );
     g_signal_connect(
@@ -529,6 +542,13 @@ void wintc_ctl_list_view_enable_drag_source(
     wintc_ctl_list_view_update_dnd_state(list_view);
 }
 
+GtkTargetList* wintc_ctl_list_view_get_dest_target_list(
+    WinTCCtlListView* list_view
+)
+{
+    return list_view->dnd_dest_targets;
+}
+
 GtkTreePath* wintc_ctl_list_view_get_drop_target(
     WinTCCtlListView* list_view
 )
@@ -603,6 +623,13 @@ GList* wintc_ctl_list_view_get_selected_items(
     ret = g_list_reverse(ret);
 
     return ret;
+}
+
+GtkTargetList* wintc_ctl_list_view_get_source_target_list(
+    WinTCCtlListView* list_view
+)
+{
+    return list_view->dnd_src_targets;
 }
 
 gint wintc_ctl_list_view_get_text_column(
@@ -1434,6 +1461,35 @@ static gboolean on_list_view_button_release_event(
     gtk_widget_queue_draw(widget);
 
     return TRUE;
+}
+
+static gboolean on_list_view_drag_drop(
+    GtkWidget*      widget,
+    GdkDragContext* context,
+    WINTC_UNUSED(gint x),
+    WINTC_UNUSED(gint y),
+    guint           time,
+    WINTC_UNUSED(gpointer user_data)
+)
+{
+    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
+
+    // If we started the drag and it was just moving an icon in the view, then
+    // we should terminate the drag drop because it is inconsequential
+    //
+    if (!(list_view->dnd_icon_target) && list_view->dnd_ctx)
+    {
+        gtk_drag_finish(
+            context,
+            FALSE,
+            FALSE,
+            time
+        );
+
+        return TRUE;
+    }
+
+    return FALSE;
 }
 
 static void on_list_view_drag_end(

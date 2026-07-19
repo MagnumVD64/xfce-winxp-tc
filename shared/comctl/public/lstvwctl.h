@@ -61,6 +61,9 @@ GtkTreePath* wintc_ctl_list_view_get_drop_target(
 GtkTreeModel* wintc_ctl_list_view_get_model(
     WinTCCtlListView* list_view
 );
+GtkOrientation wintc_ctl_list_view_get_orientation(
+    WinTCCtlListView* list_view
+);
 gint wintc_ctl_list_view_get_pixbuf_column(
     WinTCCtlListView* list_view
 );
@@ -71,6 +74,10 @@ gint wintc_ctl_list_view_get_text_column(
 void wintc_ctl_list_view_set_model(
     WinTCCtlListView* list_view,
     GtkTreeModel*     model
+);
+void wintc_ctl_list_view_set_orientation(
+    WinTCCtlListView* list_view,
+    GtkOrientation    orientation
 );
 void wintc_ctl_list_view_set_pixbuf_column(
     WinTCCtlListView* list_view,

@@ -233,7 +233,8 @@ struct _WinTCCtlListView
 
     // Item positioning
     //
-    gint itempos_count;
+    gint           itempos_count;
+    GtkOrientation orientation;
 
     // UI State
     //
@@ -550,6 +551,13 @@ GtkTreeModel* wintc_ctl_list_view_get_model(
     return list_view->model;
 }
 
+GtkOrientation wintc_ctl_list_view_get_orientation(
+    WinTCCtlListView* list_view
+)
+{
+    return list_view->orientation;
+}
+
 gint wintc_ctl_list_view_get_pixbuf_column(
     WinTCCtlListView* list_view
 )
@@ -610,6 +618,18 @@ void wintc_ctl_list_view_set_model(
 
     //
     // FIXME: Iterate over model
+    //
+}
+
+void wintc_ctl_list_view_set_orientation(
+    WinTCCtlListView* list_view,
+    GtkOrientation    orientation
+)
+{
+    list_view->orientation = orientation;
+
+    //
+    // FIXME: When auto arrange is implemented, trigger it here
     //
 }
 
@@ -735,16 +755,31 @@ static void wintc_ctl_list_view_get_next_icon_pos_for_cell(
 {
     // Work out which cell this should be in
     //
+    gint basis_x;
+    gint basis_y;
+    gint cell_x;
+    gint cell_y;
+    gint per_col;
     gint widget_h = gtk_widget_get_allocated_height(GTK_WIDGET(list_view));
-    //gint widget_w = gtk_widget_get_allocated_width(GTK_WIDGET(list_view));
+    gint widget_w = gtk_widget_get_allocated_width(GTK_WIDGET(list_view));
 
-    gint per_col = widget_h / CELL_SIZE_LARGE_ICON;
+    if (list_view->orientation == GTK_ORIENTATION_HORIZONTAL)
+    {
+        per_col = widget_w / CELL_SIZE_LARGE_ICON;
 
-    gint cell_x = cell_idx / per_col;
-    gint cell_y = cell_idx % per_col;
+        cell_x = cell_idx % per_col;
+        cell_y = cell_idx / per_col;
+    }
+    else // GTK_ORIENTATION_VERTICAL
+    {
+        per_col = widget_h / CELL_SIZE_LARGE_ICON;
 
-    gint basis_x = cell_x * CELL_SIZE_LARGE_ICON;
-    gint basis_y = cell_y * CELL_SIZE_LARGE_ICON;
+        cell_x = cell_idx / per_col;
+        cell_y = cell_idx % per_col;
+    }
+
+    basis_x = cell_x * CELL_SIZE_LARGE_ICON;
+    basis_y = cell_y * CELL_SIZE_LARGE_ICON;
 
     // Add offset to icon
     //

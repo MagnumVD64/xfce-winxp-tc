@@ -66,6 +66,10 @@ static void wintc_ctl_list_view_commit_icon_drag(
 static WinTCCtlListViewIcon* wintc_ctl_list_view_create_large_icon(
     WinTCCtlListView* list_view
 );
+static void wintc_ctl_list_view_emit_item_activated(
+    WinTCCtlListView*     list_view,
+    WinTCCtlListViewIcon* icon
+);
 static void wintc_ctl_list_view_get_next_icon_pos_for_cell(
     WinTCCtlListView* list_view,
     gint              cell_idx,
@@ -239,6 +243,9 @@ struct _WinTCCtlListView
     gboolean              hit_started;
     gboolean              hit_dragging;
     gboolean              hit_in_widget;
+
+    WinTCCtlListViewIcon* hit_icon_last;
+    guint32               hit_time_last;
 
     // DND stuff
     //
@@ -696,6 +703,27 @@ static WinTCCtlListViewIcon* wintc_ctl_list_view_create_large_icon(
     large_icon->hitbox_icon.height = HITBOX_LARGE_ICON;
 
     return large_icon;
+}
+
+static void wintc_ctl_list_view_emit_item_activated(
+    WinTCCtlListView*     list_view,
+    WinTCCtlListViewIcon* icon
+)
+{
+    GtkTreePath* path =
+        wintc_ctl_list_view_get_path_for_icon(
+            list_view,
+            icon
+        );
+
+    g_signal_emit(
+        list_view,
+        wintc_ctl_list_view_signals[SIGNAL_ITEM_ACTIVATED],
+        0,
+        path
+    );
+
+    gtk_tree_path_free(path);
 }
 
 static void wintc_ctl_list_view_get_next_icon_pos_for_cell(
@@ -1184,6 +1212,27 @@ static gboolean on_list_view_button_press_event(
             NULL
         );
 
+    // Check for potential double-click
+    //
+    if (
+        list_view->hit_icon &&
+        list_view->hit_icon == list_view->hit_icon_last &&
+        e->time - list_view->hit_time_last < 200
+    )
+    {
+        wintc_ctl_list_view_emit_item_activated(
+            list_view,
+            list_view->hit_icon
+        );
+
+        list_view->hit_icon_last = NULL;
+        list_view->hit_time_last = G_MAXUINT32;
+    }
+    else
+    {
+        list_view->hit_time_last = e->time;
+    }
+
     // Update the selection state for whether we hit the icon or not
     //
     if (list_view->hit_icon)
@@ -1239,6 +1288,12 @@ static gboolean on_list_view_button_release_event(
     if (list_view->hit_dragging)
     {
         wintc_ctl_list_view_commit_icon_drag(list_view);
+    }
+    else
+    {
+        // Didn't drag? Store hit icon for a potential double-click
+        //
+        list_view->hit_icon_last = list_view->hit_icon;
     }
 
     wintc_ctl_list_view_reset_hit_state(list_view);
@@ -1346,20 +1401,10 @@ static gboolean on_list_view_key_press_event(
         //
         for (GList* iter = list_view->list_selected; iter; iter = iter->next)
         {
-            GtkTreePath* path =
-                wintc_ctl_list_view_get_path_for_icon(
-                    list_view,
-                    (WinTCCtlListViewIcon*) iter->data
-                );
-
-            g_signal_emit(
+            wintc_ctl_list_view_emit_item_activated(
                 list_view,
-                wintc_ctl_list_view_signals[SIGNAL_ITEM_ACTIVATED],
-                0,
-                path
+                (WinTCCtlListViewIcon*) iter->data
             );
-
-            gtk_tree_path_free(path);
         }
     }
 

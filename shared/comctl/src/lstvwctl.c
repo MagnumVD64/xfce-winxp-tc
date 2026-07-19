@@ -378,11 +378,6 @@ static gboolean wintc_ctl_list_view_draw(
 {
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
 
-    cairo_save(cr);
-    cairo_set_source_rgb(cr, 1.0f, 1.0f, 1.0f);
-    cairo_paint(cr);
-    cairo_restore(cr);
-
     // Paint icons - painting from end to start because the first item in the
     // list is the highest z-order
     //

@@ -2,6 +2,7 @@
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib.h>
 #include <gtk/gtk.h>
+#include <wintc/comctl.h>
 #include <wintc/comgtk.h>
 #include <wintc/shcommon.h>
 #include <wintc/shell.h>
@@ -80,8 +81,8 @@ struct _WinTCDesktopWindow
 
     // UI
     //
-    GtkWidget*                iconview_browser;
-    WinTCShIconViewBehaviour* behaviour_icons;
+    GtkWidget*                listview_browser;
+    WinTCShListViewBehaviour* behaviour_icons;
 
     // Shell stuff
     //
@@ -149,11 +150,16 @@ static void wintc_desktop_window_init(
     WinTCDesktopWindow* self
 )
 {
-    self->iconview_browser = gtk_icon_view_new();
+    self->listview_browser = wintc_ctl_list_view_new();
+
+    wintc_ctl_list_view_set_orientation(
+        WINTC_CTL_LIST_VIEW(self->listview_browser),
+        GTK_ORIENTATION_VERTICAL
+    );
 
     gtk_container_add(
         GTK_CONTAINER(self),
-        self->iconview_browser
+        self->listview_browser
     );
 
     g_signal_connect(
@@ -201,8 +207,8 @@ static void wintc_desktop_window_constructed(
         );
 
         wnd->behaviour_icons =
-            wintc_sh_icon_view_behaviour_new(
-                GTK_ICON_VIEW(wnd->iconview_browser),
+            wintc_sh_list_view_behaviour_new(
+                WINTC_CTL_LIST_VIEW(wnd->listview_browser),
                 wnd->browser
             );
 
@@ -437,7 +443,7 @@ static gboolean wintc_desktop_window_draw(
 
     // Draw the icon view
     //
-    gtk_widget_draw(wnd->iconview_browser, cr);
+    gtk_widget_draw(wnd->listview_browser, cr);
 
 //    (GTK_WIDGET_CLASS(wintc_desktop_window_parent_class))
 //        ->draw(widget, cr);

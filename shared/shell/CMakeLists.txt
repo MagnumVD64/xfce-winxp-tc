@@ -53,6 +53,8 @@ add_library(
     public/fsop.h
     src/icnvwbeh.c
     public/icnvwbeh.h
+    src/lstvwbeh.c
+    public/lstvwbeh.h
     src/newmenu.c
     public/newmenu.h
     src/nmspace.c

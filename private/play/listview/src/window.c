@@ -126,8 +126,8 @@ static void wintc_list_view_test_window_init(
 
     gtk_window_set_default_size(
         GTK_WINDOW(self),
-        320,
-        200
+        400,
+        320
     );
 
     gtk_container_add(
@@ -206,6 +206,16 @@ static void wintc_list_view_test_window_init(
 
     // Add items
     //
+    wintc_list_view_test_window_insert_row(
+        self,
+        "My Computer",
+        "computer"
+    );
+    wintc_list_view_test_window_insert_row(
+        self,
+        "My Documents",
+        "folder-documents"
+    );
     wintc_list_view_test_window_insert_row(
         self,
         "Recycle Bin",

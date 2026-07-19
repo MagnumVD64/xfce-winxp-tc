@@ -13,6 +13,8 @@
 #define DRAG_THRESHOLD    5
 #define HITBOX_LARGE_ICON 32
 
+#define CELL_SIZE_LARGE_ICON 75
+
 #define ICON_IS_COMMITTED(i) (i->icon && i->text)
 
 //
@@ -41,6 +43,7 @@ typedef struct _WinTCCtlListViewIcon
     GdkPixbuf* icon;
     gchar*     text;
 
+    gboolean     realize_idx; // If we're to delay positioning to realize
     GdkRectangle hitbox_icon;
     GdkRectangle hitbox_label;
 
@@ -63,6 +66,12 @@ static void wintc_ctl_list_view_commit_icon_drag(
 static WinTCCtlListViewIcon* wintc_ctl_list_view_create_large_icon(
     WinTCCtlListView* list_view
 );
+static void wintc_ctl_list_view_get_next_icon_pos_for_cell(
+    WinTCCtlListView* list_view,
+    gint              cell_idx,
+    gint*             x,
+    gint*             y
+);
 static GtkTreePath* wintc_ctl_list_view_get_path_for_icon(
     WinTCCtlListView*     list_view,
     WinTCCtlListViewIcon* icon
@@ -72,6 +81,12 @@ static WinTCCtlListViewIcon* wintc_ctl_list_view_hit_test(
     gint              x,
     gint              y,
     gboolean*         hit_label
+);
+static void wintc_ctl_list_view_move_icon(
+    WinTCCtlListView*     list_view,
+    WinTCCtlListViewIcon* icon,
+    gint                  x,
+    gint                  y
 );
 static void wintc_ctl_list_view_render_large_icon(
     WinTCCtlListView*         list_view,
@@ -146,6 +161,10 @@ static gboolean on_list_view_motion_notify_event(
     GdkEvent*  event,
     gpointer   user_data
 );
+static void on_list_view_realize(
+    GtkWidget* widget,
+    gpointer   user_data
+);
 
 static void on_model_row_changed(
     GtkTreeModel* tree_model,
@@ -203,6 +222,10 @@ struct _WinTCCtlListView
     gulong sigid_row_changed;
     gulong sigid_row_deleted;
     gulong sigid_row_inserted;
+
+    // Item positioning
+    //
+    gint itempos_count;
 
     // UI State
     //
@@ -323,6 +346,12 @@ static void wintc_ctl_list_view_init(
         self,
         "motion-notify-event",
         G_CALLBACK(on_list_view_motion_notify_event),
+        NULL
+    );
+    g_signal_connect(
+        self,
+        "realize",
+        G_CALLBACK(on_list_view_realize),
         NULL
     );
 }
@@ -653,10 +682,37 @@ static WinTCCtlListViewIcon* wintc_ctl_list_view_create_large_icon(
 {
     WinTCCtlListViewIcon* large_icon = g_new0(WinTCCtlListViewIcon, 1);
 
+    large_icon->realize_idx        = -1;
     large_icon->hitbox_icon.width  = HITBOX_LARGE_ICON;
     large_icon->hitbox_icon.height = HITBOX_LARGE_ICON;
 
     return large_icon;
+}
+
+static void wintc_ctl_list_view_get_next_icon_pos_for_cell(
+    WinTCCtlListView* list_view,
+    gint              cell_idx,
+    gint*             x,
+    gint*             y
+)
+{
+    // Work out which cell this should be in
+    //
+    gint widget_h = gtk_widget_get_allocated_height(GTK_WIDGET(list_view));
+    //gint widget_w = gtk_widget_get_allocated_width(GTK_WIDGET(list_view));
+
+    gint per_col = widget_h / CELL_SIZE_LARGE_ICON;
+
+    gint cell_x = cell_idx / per_col;
+    gint cell_y = cell_idx % per_col;
+
+    gint basis_x = cell_x * CELL_SIZE_LARGE_ICON;
+    gint basis_y = cell_y * CELL_SIZE_LARGE_ICON;
+
+    // Add offset to icon
+    //
+    *x = basis_x + ((CELL_SIZE_LARGE_ICON - HITBOX_LARGE_ICON) / 2);
+    *y = basis_y + 2;
 }
 
 static GtkTreePath* wintc_ctl_list_view_get_path_for_icon(
@@ -711,6 +767,23 @@ static WinTCCtlListViewIcon* wintc_ctl_list_view_hit_test(
     }
 
     return NULL;
+}
+
+static void wintc_ctl_list_view_move_icon(
+    WINTC_UNUSED(WinTCCtlListView* list_view),
+    WinTCCtlListViewIcon* icon,
+    gint                  x,
+    gint                  y
+)
+{
+    gint dx = x - icon->hitbox_icon.x;
+    gint dy = y - icon->hitbox_icon.y;
+
+    icon->hitbox_icon.x = x;
+    icon->hitbox_icon.y = y;
+
+    icon->hitbox_label.x += dx;
+    icon->hitbox_label.y += dy;
 }
 
 static void wintc_ctl_list_view_render_large_icon(
@@ -1356,6 +1429,48 @@ static gboolean on_list_view_motion_notify_event(
     return TRUE;
 }
 
+static void on_list_view_realize(
+    GtkWidget* widget,
+    WINTC_UNUSED(gpointer user_data)
+)
+{
+    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
+
+    // Iterate over icons and check for any that need their position realized
+    //
+    for (GList* iter = list_view->list_icons; iter; iter = iter->next)
+    {
+        WinTCCtlListViewIcon* large_icon =
+            (WinTCCtlListViewIcon*) iter->data;
+
+        if (large_icon->realize_idx < 0)
+        {
+            continue;
+        }
+
+        // We must position this icon
+        //
+        gint new_x;
+        gint new_y;
+
+        wintc_ctl_list_view_get_next_icon_pos_for_cell(
+            list_view,
+            large_icon->realize_idx,
+            &new_x,
+            &new_y
+        );
+
+        wintc_ctl_list_view_move_icon(
+            list_view,
+            large_icon,
+            new_x,
+            new_y
+        );
+
+        large_icon->realize_idx = -1;
+    }
+}
+
 static void on_model_row_changed(
     WINTC_UNUSED(GtkTreeModel* tree_model),
     GtkTreePath* path,
@@ -1457,11 +1572,30 @@ static void on_model_row_inserted(
         return;
     }
 
-    gint idx = gtk_tree_path_get_indices(path)[0];
-
+    // Create the new icon
+    //
     WinTCCtlListViewIcon* large_icon =
         wintc_ctl_list_view_create_large_icon(list_view);
 
+    large_icon->realize_idx = list_view->itempos_count;
+
+    if (gtk_widget_get_realized(GTK_WIDGET(list_view)))
+    {
+        wintc_ctl_list_view_get_next_icon_pos_for_cell(
+            list_view,
+            list_view->itempos_count,
+            &(large_icon->hitbox_icon.x),
+            &(large_icon->hitbox_icon.y)
+        );
+
+        large_icon->realize_idx = -1;
+    }
+
+    list_view->itempos_count++;
+
+    // Insert into our collections
+    //
+    gint           idx      = gtk_tree_path_get_indices(path)[0];
     GSequenceIter* iter_seq =
         g_sequence_get_iter_at_pos(list_view->seq_icons, idx);
 

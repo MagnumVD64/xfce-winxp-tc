@@ -380,8 +380,10 @@ static gboolean wintc_desktop_window_draw(
     {
         static gchar* s_tag = NULL;
 
-        cairo_text_extents_t extents;
-        gdouble              y;
+        PangoContext*  ctx;
+        PangoRectangle extents;
+        PangoLayout*   layout;
+        gdouble        y;
 
         gint height = gtk_widget_get_allocated_height(widget);
         gint width  = gtk_widget_get_allocated_width(widget);
@@ -401,44 +403,67 @@ static gboolean wintc_desktop_window_draw(
 
         // Handle build string first...
         //
-        cairo_select_font_face(
-            cr,
-            "sans-serif",
-            CAIRO_FONT_SLANT_NORMAL,
-            CAIRO_FONT_WEIGHT_NORMAL
-        );
+        ctx    = gtk_widget_get_pango_context(widget);
+        layout = pango_layout_new(ctx);
 
-        cairo_text_extents(cr, s_tag, &extents);
+        pango_layout_set_text(layout, s_tag, -1);
+
+        pango_layout_get_pixel_extents(
+            layout,
+            NULL,
+            &extents
+        );
 
         cairo_move_to(
             cr,
-            width - extents.width - 10,
-            height - extents.height - 34 // FIXME: Hardcoded taskband height
+            width  - extents.width  - 10,
+            height - extents.height - 38 // FIXME: Hardcoded taskband height
         );
 
-        cairo_show_text(cr, s_tag);
+        pango_cairo_show_layout(cr, layout);
+
+        g_object_unref(layout);
 
         // ...and the product name
         // FIXME: Hard coded temp name in here until we have a name
         //
-        cairo_select_font_face(
-            cr,
-            "sans-serif",
-            CAIRO_FONT_SLANT_NORMAL,
-            CAIRO_FONT_WEIGHT_BOLD
+        PangoFontDescription* font =
+            pango_font_description_from_string(
+                "Trebuchet MS Bold 10"
+            );
+
+        ctx    = gtk_widget_create_pango_context(widget);
+        layout = pango_layout_new(ctx);
+
+        pango_layout_set_font_description(
+            layout,
+            font
+        );
+        pango_layout_set_text(
+            layout,
+            "Windows 'Total Conversion'",
+            -1
         );
 
-        cairo_text_extents(cr, "Windows 'Total Conversion'", &extents);
+        pango_layout_get_pixel_extents(
+            layout,
+            NULL,
+            &extents
+        );
 
         cairo_get_current_point(cr, NULL, &y);
 
         cairo_move_to(
             cr,
-            width - extents.width - 10,
-            y - extents.height - 4
+            width - extents.width  - 10,
+            y     - extents.height - 4
         );
 
-        cairo_show_text(cr, "Windows 'Total Conversion'");
+        pango_cairo_show_layout(cr, layout);
+
+        pango_font_description_free(font);
+        g_object_unref(layout);
+        g_object_unref(ctx);
     }
 
     // Draw the icon view

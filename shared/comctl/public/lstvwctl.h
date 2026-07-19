@@ -107,6 +107,10 @@ void wintc_ctl_list_view_set_text_column(
     gint              column
 );
 
+gboolean wintc_ctl_list_view_should_ignore_drop(
+    WinTCCtlListView* list_view
+);
+
 void wintc_ctl_list_view_unselect_all(
     WinTCCtlListView* list_view
 );

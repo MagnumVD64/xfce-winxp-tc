@@ -130,14 +130,6 @@ static void wintc_ctl_list_view_update_icon(
     WinTCCtlListViewIcon* icon,
     GtkTreeIter*          iter
 );
-static gboolean on_list_view_drag_drop(
-    GtkWidget*      widget,
-    GdkDragContext* context,
-    gint            x,
-    gint            y,
-    guint           time,
-    gpointer        user_data
-);
 static void on_list_view_drag_end(
     GtkWidget*      widget,
     GdkDragContext* context,
@@ -334,12 +326,6 @@ static void wintc_ctl_list_view_init(
         self,
         "button-release-event",
         G_CALLBACK(on_list_view_button_release_event),
-        NULL
-    );
-    g_signal_connect(
-        self,
-        "drag-drop",
-        G_CALLBACK(on_list_view_drag_drop),
         NULL
     );
     g_signal_connect(
@@ -752,6 +738,13 @@ void wintc_ctl_list_view_set_text_column(
     //
     // FIXME: Update existing icons now
     //
+}
+
+gboolean wintc_ctl_list_view_should_ignore_drop(
+    WinTCCtlListView* list_view
+)
+{
+    return list_view->dnd_ctx && !(list_view->dnd_icon_target);
 }
 
 void wintc_ctl_list_view_unselect_all(
@@ -1467,35 +1460,6 @@ static gboolean on_list_view_button_release_event(
     gtk_widget_queue_draw(widget);
 
     return TRUE;
-}
-
-static gboolean on_list_view_drag_drop(
-    GtkWidget*      widget,
-    GdkDragContext* context,
-    WINTC_UNUSED(gint x),
-    WINTC_UNUSED(gint y),
-    guint           time,
-    WINTC_UNUSED(gpointer user_data)
-)
-{
-    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
-
-    // If we started the drag and it was just moving an icon in the view, then
-    // we should terminate the drag drop because it is inconsequential
-    //
-    if (!(list_view->dnd_icon_target) && list_view->dnd_ctx)
-    {
-        gtk_drag_finish(
-            context,
-            FALSE,
-            FALSE,
-            time
-        );
-
-        return TRUE;
-    }
-
-    return FALSE;
 }
 
 static void on_list_view_drag_end(

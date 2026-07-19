@@ -1159,7 +1159,23 @@ static gboolean on_list_view_drag_drop(
     behaviour->drag_y      = y;
     behaviour->drag_motion = FALSE;
 
-    gtk_drag_get_data(widget, context, S_ATOM_TEXT_URI_LIST, time);
+    if (
+        wintc_ctl_list_view_should_ignore_drop(
+            WINTC_CTL_LIST_VIEW(widget)
+        )
+    )
+    {
+        gtk_drag_finish(
+            context,
+            FALSE,
+            FALSE,
+            0
+        );
+    }
+    else
+    {
+        gtk_drag_get_data(widget, context, S_ATOM_TEXT_URI_LIST, time);
+    }
     
     return TRUE;
 }

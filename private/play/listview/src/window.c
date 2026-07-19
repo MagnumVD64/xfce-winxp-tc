@@ -343,6 +343,20 @@ static gboolean on_list_view_drag_drop(
     WinTCCtlListView* list_view =
         WINTC_CTL_LIST_VIEW(widget);
 
+    if (wintc_ctl_list_view_should_ignore_drop(list_view))
+    {
+        gtk_drag_finish(
+            context,
+            FALSE,
+            FALSE,
+            0
+        );
+
+        return TRUE;
+    }
+
+    // We do actually care about this drop
+    //
     GtkTreePath* path =
         wintc_ctl_list_view_get_drop_target(list_view);
 

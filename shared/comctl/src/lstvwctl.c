@@ -89,6 +89,9 @@ static GtkTreePath* wintc_ctl_list_view_get_path_for_icon(
     WinTCCtlListView*     list_view,
     WinTCCtlListViewIcon* icon
 );
+static gboolean wintc_ctl_list_view_has_solid_bg(
+    WinTCCtlListView* list_view
+);
 static WinTCCtlListViewIcon* wintc_ctl_list_view_hit_test(
     WinTCCtlListView* list_view,
     gint              x,
@@ -267,6 +270,10 @@ struct _WinTCCtlListView
     GdkDragContext* dnd_ctx;
 
     WinTCCtlListViewIcon* dnd_icon_target;
+
+    // Rendering
+    //
+    gboolean solid_bg;
 };
 
 //
@@ -300,6 +307,8 @@ static void wintc_ctl_list_view_class_init(
             1,
             G_TYPE_POINTER
         );
+
+    gtk_widget_class_set_css_name(widget_class, "listview");
 }
 
 static void wintc_ctl_list_view_init(
@@ -308,7 +317,8 @@ static void wintc_ctl_list_view_init(
 {
     self->col_pixbuf = -1;
     self->col_text   = -1;
-    self->seq_icons = g_sequence_new(NULL);
+    self->seq_icons  = g_sequence_new(NULL);
+    self->solid_bg   = TRUE;
 
     gtk_widget_add_events(
         GTK_WIDGET(self),
@@ -387,6 +397,21 @@ static gboolean wintc_ctl_list_view_draw(
 )
 {
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
+
+    // Paint BG
+    //
+    GtkAllocation alloc;
+
+    gtk_widget_get_allocation(widget, &alloc);
+
+    gtk_render_background(
+        gtk_widget_get_style_context(widget),
+        cr,
+        alloc.x,
+        alloc.y,
+        alloc.width,
+        alloc.height
+    );
 
     // Paint icons - painting from end to start because the first item in the
     // list is the highest z-order
@@ -1009,6 +1034,39 @@ static GtkTreePath* wintc_ctl_list_view_get_path_for_icon(
     return gtk_tree_path_new_from_indices(idx, -1);
 }
 
+static gboolean wintc_ctl_list_view_has_solid_bg(
+    WinTCCtlListView* list_view
+)
+{
+    cairo_surface_t* fake_surface =
+        cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
+
+    cairo_t* cr = cairo_create(fake_surface);
+
+    gtk_render_background(
+        gtk_widget_get_style_context(GTK_WIDGET(list_view)),
+        cr,
+        0,
+        0,
+        1,
+        1
+    );
+
+    cairo_surface_flush(fake_surface);
+
+    // Sample the pixel
+    //
+    unsigned char* data =
+        cairo_image_surface_get_data(fake_surface);
+
+    gboolean ret = data[3] == 255; // Alpha value
+
+    cairo_destroy(cr);
+    cairo_surface_destroy(fake_surface);
+
+    return ret;
+}
+
 static WinTCCtlListViewIcon* wintc_ctl_list_view_hit_test(
     WinTCCtlListView* list_view,
     gint              x,
@@ -1136,24 +1194,29 @@ static void wintc_ctl_list_view_render_large_icon(
 
     if (style == WINTC_CTL_LIST_VIEW_ICON_STYLE_REGULAR)
     {
-        cairo_save(cr);
-        cairo_set_source_rgba(cr, 0.0f, 0.0f, 0.0f, 1.0f);
-
-        for (gint i = 0; i < LABEL_TEXT_SHADOW_INTENSITY; i++)
+        // Only render the text shadow if there's no background
+        //
+        if (!(list_view->solid_bg))
         {
-            cairo_mask_surface(
-                cr,
-                large_icon->surface_text_shadow,
-                (gdouble) large_icon->hitbox_label.x +
-                offset_x - LABEL_TEXT_SHADOW_OFFSET -
-                large_icon->offset_label_render.x,
-                (gdouble) large_icon->hitbox_label.y +
-                offset_y - LABEL_TEXT_SHADOW_OFFSET -
-                large_icon->offset_label_render.y
-            );
-        }
+            cairo_save(cr);
+            cairo_set_source_rgba(cr, 0.0f, 0.0f, 0.0f, 1.0f);
 
-        cairo_restore(cr);
+            for (gint i = 0; i < LABEL_TEXT_SHADOW_INTENSITY; i++)
+            {
+                cairo_mask_surface(
+                    cr,
+                    large_icon->surface_text_shadow,
+                    (gdouble) large_icon->hitbox_label.x +
+                    offset_x - LABEL_TEXT_SHADOW_OFFSET -
+                    large_icon->offset_label_render.x,
+                    (gdouble) large_icon->hitbox_label.y +
+                    offset_y - LABEL_TEXT_SHADOW_OFFSET -
+                    large_icon->offset_label_render.y
+                );
+            }
+
+            cairo_restore(cr);
+        }
     }
     else
     {
@@ -1174,7 +1237,20 @@ static void wintc_ctl_list_view_render_large_icon(
         cairo_restore(cr);
     }
 
-    cairo_set_source_rgb(cr, 1.0f, 1.0f, 1.0f);
+    // Use black text if there's a solid background, otherwise white
+    //
+    if (
+        list_view->solid_bg &&
+        style != WINTC_CTL_LIST_VIEW_ICON_STYLE_SELECTED
+    )
+    {
+        cairo_set_source_rgb(cr, 0.0f, 0.0f, 0.0f);
+    }
+    else
+    {
+        cairo_set_source_rgb(cr, 1.0f, 1.0f, 1.0f);
+    }
+
     cairo_move_to(
         cr,
         large_icon->hitbox_label.x +
@@ -1779,6 +1855,9 @@ static void on_list_view_realize(
 )
 {
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
+
+    list_view->solid_bg =
+        wintc_ctl_list_view_has_solid_bg(list_view);
 
     //
     // FIXME: Shouldn't this just reload the layout?

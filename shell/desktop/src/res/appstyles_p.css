@@ -3,9 +3,9 @@
  **/
 
 /**
- * Default styles for the icon view
+ * Default styles for list view
  */
-iconview:not(:selected)
+listview
 {
     background: transparent;
 }

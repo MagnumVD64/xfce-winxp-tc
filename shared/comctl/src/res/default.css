@@ -86,3 +86,11 @@ box.vertical.wintc-button-box button:last-child
 {
     font-weight: bold;
 }
+
+/**
+ * List view control
+ */
+listview
+{
+    background: #FFF;
+}

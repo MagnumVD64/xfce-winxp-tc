@@ -1406,4 +1406,8 @@ static void on_current_view_refreshing(
         WINTC_SH_LIST_VIEW_BEHAVIOUR(user_data);
 
     gtk_list_store_clear(behaviour->list_model);
+
+    wintc_ctl_list_view_reset_layout(
+        WINTC_CTL_LIST_VIEW(behaviour->list_view)
+    );
 }

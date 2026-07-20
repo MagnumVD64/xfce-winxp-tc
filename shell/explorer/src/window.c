@@ -241,14 +241,14 @@ struct _WinTCExplorerWindow
 
     // UI
     //
-    WinTCShIconViewBehaviour* behaviour_icons;
+    WinTCShListViewBehaviour* behaviour_icons;
 
     GtkWidget* pane_view;
 
     GtkWidget* box_toolbars;
 
     GtkWidget* scrollwnd_main;
-    GtkWidget* iconview_browser;
+    GtkWidget* listview_browser;
     GtkWidget* webkit_browser;
 
     GtkWidget* throbber;
@@ -518,7 +518,7 @@ static void wintc_explorer_window_dispose(
     g_clear_object(&(wnd->fldr_opts));
     g_clear_object(&(wnd->shext_host));
 
-    g_clear_object(&(wnd->iconview_browser));
+    g_clear_object(&(wnd->listview_browser));
     g_clear_object(&(wnd->webkit_browser));
 
     g_clear_object(&(wnd->loader));
@@ -798,7 +798,7 @@ GList* wintc_explorer_window_get_selected_items(
     // FIXME: Depends what's focused, or focused last I guess - for now just
     //        use the icon view
     //
-    return wintc_sh_icon_view_behaviour_get_selected_items(
+    return wintc_sh_list_view_behaviour_get_selected_items(
         wnd->behaviour_icons
     );
 }
@@ -1078,11 +1078,11 @@ static void wintc_explorer_window_switch_mode_to(
     switch (wnd->mode)
     {
         case WINTC_EXPLORER_WINDOW_MODE_LOCAL:
-            if (wnd->iconview_browser)
+            if (wnd->listview_browser)
             {
                 gtk_container_remove(
                     GTK_CONTAINER(wnd->scrollwnd_main),
-                    wnd->iconview_browser
+                    wnd->listview_browser
                 );
             }
 
@@ -1111,11 +1111,16 @@ static void wintc_explorer_window_switch_mode_to(
     switch (wnd->mode)
     {
         case WINTC_EXPLORER_WINDOW_MODE_LOCAL:
-            if (!wnd->iconview_browser)
+            if (!wnd->listview_browser)
             {
-                wnd->iconview_browser = gtk_icon_view_new();
+                wnd->listview_browser = wintc_ctl_list_view_new();
 
-                g_object_ref(wnd->iconview_browser);
+                wintc_ctl_list_view_set_auto_arrange(
+                    WINTC_CTL_LIST_VIEW(wnd->listview_browser),
+                    TRUE
+                );
+
+                g_object_ref(wnd->listview_browser);
 
                 // Set up shell browser
                 //
@@ -1135,12 +1140,12 @@ static void wintc_explorer_window_switch_mode_to(
                 // Link up with UI
                 //
                 wnd->behaviour_icons =
-                    wintc_sh_icon_view_behaviour_new(
-                        GTK_ICON_VIEW(wnd->iconview_browser),
+                    wintc_sh_list_view_behaviour_new(
+                        WINTC_CTL_LIST_VIEW(wnd->listview_browser),
                         wnd->browser
                     );
 
-                gtk_widget_show(wnd->iconview_browser);
+                gtk_widget_show(wnd->listview_browser);
             }
 
             // Update view
@@ -1154,11 +1159,11 @@ static void wintc_explorer_window_switch_mode_to(
 
             gtk_container_add(
                 GTK_CONTAINER(wnd->scrollwnd_main),
-                wnd->iconview_browser
+                wnd->listview_browser
             );
 
             gtk_widget_grab_focus(
-                wnd->iconview_browser
+                wnd->listview_browser
             );
 
             break;

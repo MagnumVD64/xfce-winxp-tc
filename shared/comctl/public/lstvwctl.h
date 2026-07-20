@@ -55,6 +55,9 @@ void wintc_ctl_list_view_enable_drag_source(
     GdkDragAction         actions
 );
 
+gboolean wintc_ctl_list_view_get_auto_arrange(
+    WinTCCtlListView* list_view
+);
 GtkTargetList* wintc_ctl_list_view_get_dest_target_list(
     WinTCCtlListView* list_view
 );
@@ -85,11 +88,19 @@ gint wintc_ctl_list_view_get_text_column(
     WinTCCtlListView* list_view
 );
 
+void wintc_ctl_list_view_reset_layout(
+    WinTCCtlListView* list_view
+);
+
 void wintc_ctl_list_view_select_path(
     WinTCCtlListView* list_view,
     GtkTreePath*      path
 );
 
+void wintc_ctl_list_view_set_auto_arrange(
+    WinTCCtlListView* list_view,
+    gboolean          auto_arrange
+);
 void wintc_ctl_list_view_set_model(
     WinTCCtlListView* list_view,
     GtkTreeModel*     model

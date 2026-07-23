@@ -2,6 +2,7 @@
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib.h>
 #include <gtk/gtk.h>
+#include <math.h>
 #include <wintc/comgtk.h>
 
 #include "../public/lstvwctl.h"
@@ -60,6 +61,31 @@ typedef struct _WinTCCtlListViewIcon
 static gboolean wintc_ctl_list_view_draw(
     GtkWidget* widget,
     cairo_t*   cr
+);
+static void wintc_ctl_list_view_get_preferred_height(
+    GtkWidget* widget,
+    gint*      minimum_height,
+    gint*      natural_height
+);
+static void wintc_ctl_list_view_get_preferred_height_for_width(
+    GtkWidget* widget,
+    gint       width,
+    gint*      minimum_height,
+    gint*      natural_height
+);
+static void wintc_ctl_list_view_get_preferred_width(
+    GtkWidget* widget,
+    gint*      minimum_width,
+    gint*      natural_width
+);
+static void wintc_ctl_list_view_get_preferred_width_for_height(
+    GtkWidget* widget,
+    gint       height,
+    gint*      minimum_width,
+    gint*      natural_width
+);
+static GtkSizeRequestMode wintc_ctl_list_view_get_request_mode(
+    GtkWidget* widget
 );
 
 static void wintc_ctl_list_view_auto_arrange(
@@ -245,6 +271,7 @@ struct _WinTCCtlListView
     // Item positioning
     //
     gint           itempos_count;
+    GdkPoint       itempos_max;
     GtkOrientation orientation;
 
     gboolean auto_arrange;
@@ -293,6 +320,16 @@ static void wintc_ctl_list_view_class_init(
     GtkWidgetClass* widget_class = GTK_WIDGET_CLASS(klass);
 
     widget_class->draw = wintc_ctl_list_view_draw;
+    widget_class->get_preferred_height =
+        wintc_ctl_list_view_get_preferred_height;
+    widget_class->get_preferred_height_for_width =
+        wintc_ctl_list_view_get_preferred_height_for_width;
+    widget_class->get_preferred_width =
+        wintc_ctl_list_view_get_preferred_width;
+    widget_class->get_preferred_width_for_height =
+        wintc_ctl_list_view_get_preferred_width_for_height;
+    widget_class->get_request_mode =
+        wintc_ctl_list_view_get_request_mode;
 
     wintc_ctl_list_view_signals[SIGNAL_ITEM_ACTIVATED] =
         g_signal_new(
@@ -499,6 +536,75 @@ static gboolean wintc_ctl_list_view_draw(
     return FALSE;
 }
 
+static void wintc_ctl_list_view_get_preferred_height(
+    GtkWidget* widget,
+    gint*      minimum_height,
+    gint*      natural_height
+)
+{
+    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
+
+    *minimum_height = 0;
+    *natural_height =
+        g_sequence_get_length(list_view->seq_icons) * CELL_SIZE_LARGE_ICON;
+}
+
+static void wintc_ctl_list_view_get_preferred_height_for_width(
+    GtkWidget* widget,
+    gint       width,
+    gint*      minimum_height,
+    gint*      natural_height
+)
+{
+    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
+
+    gint cols = MAX(width / CELL_SIZE_LARGE_ICON, 1);
+    gint rows =
+        ceil((gdouble) g_sequence_get_length(list_view->seq_icons) / cols);
+
+    gdouble required = rows * CELL_SIZE_LARGE_ICON;
+
+    *minimum_height = required;
+    *natural_height = required;
+}
+
+static void wintc_ctl_list_view_get_preferred_width(
+    WINTC_UNUSED(GtkWidget* widget),
+    gint* minimum_width,
+    gint* natural_width
+)
+{
+    *minimum_width = 0;
+    *natural_width = CELL_SIZE_LARGE_ICON;
+}
+
+static void wintc_ctl_list_view_get_preferred_width_for_height(
+    WINTC_UNUSED(GtkWidget* widget),
+    WINTC_UNUSED(gint height),
+    gint* minimum_width,
+    gint* natural_width
+)
+{
+    *minimum_width = 0;
+    *natural_width = CELL_SIZE_LARGE_ICON;
+}
+
+static GtkSizeRequestMode wintc_ctl_list_view_get_request_mode(
+    GtkWidget* widget
+)
+{
+    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
+
+    if (list_view->orientation == GTK_ORIENTATION_HORIZONTAL)
+    {
+        return GTK_SIZE_REQUEST_HEIGHT_FOR_WIDTH;
+    }
+    else // GTK_ORIENTATION_VERTICAL
+    {
+        return GTK_SIZE_REQUEST_WIDTH_FOR_HEIGHT;
+    }
+}
+
 //
 // PUBLIC FUNCTIONS
 //
@@ -668,6 +774,8 @@ void wintc_ctl_list_view_reset_layout(
 )
 {
     list_view->itempos_count = 0;
+    list_view->itempos_max.x = 0;
+    list_view->itempos_max.y = 0;
 
     // Iterate over the SEQUENCE to position everything
     //
@@ -1109,7 +1217,7 @@ static WinTCCtlListViewIcon* wintc_ctl_list_view_hit_test(
 }
 
 static void wintc_ctl_list_view_move_icon(
-    WINTC_UNUSED(WinTCCtlListView* list_view),
+    WinTCCtlListView*     list_view,
     WinTCCtlListViewIcon* icon,
     gint                  x,
     gint                  y
@@ -1123,6 +1231,16 @@ static void wintc_ctl_list_view_move_icon(
 
     icon->hitbox_label.x += dx;
     icon->hitbox_label.y += dy;
+
+    // Track the maximum icon pos
+    //
+    list_view->itempos_max.x = MAX(list_view->itempos_max.x, x);
+    list_view->itempos_max.y = MAX(list_view->itempos_max.y, y);
+
+    // FIXME: Could require allocation adjustment if the icon is move out of
+    //        bounds
+    //
+    gtk_widget_queue_resize(GTK_WIDGET(list_view));
 }
 
 static void wintc_ctl_list_view_raise_icon(

@@ -1538,6 +1538,7 @@ static void wintc_ctl_list_view_reset_hit_state(
 )
 {
     memset(&(list_view->motion_rect), 0, sizeof(GdkRectangle));
+
     list_view->hit_icon        = NULL;
     list_view->hit_started     = FALSE;
     list_view->hit_dragging    = FALSE;
@@ -2226,6 +2227,14 @@ static void on_model_row_deleted(
                 large_icon
             )
         );
+
+    GList* el_selected = g_list_find(list_view->list_selected, large_icon);
+
+    if (el_selected)
+    {
+        list_view->list_selected =
+            g_list_delete_link(list_view->list_selected, el_selected);
+    }
 
     //
     // FIXME: Free large icon

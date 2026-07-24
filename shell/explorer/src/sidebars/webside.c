@@ -297,7 +297,10 @@ static void wintc_exp_web_sidebar_update_actions(
 
         if (v_special)
         {
-            g_critical("%s", "shell: special item not supported!");
+            g_warning(
+                "%s",
+                "explorer: web sidebar - special item not supported!"
+            );
         }
         else
         {

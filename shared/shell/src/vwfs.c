@@ -710,7 +710,7 @@ static gboolean wintc_sh_view_fs_drop_test(
     WinTCShextViewItem* view_item =
         wintc_sh_view_fs_get_view_item(view_fs, item_hash);
 
-    if (view_item->is_leaf) // Folders are treated as writable
+    if (!(view_item->is_leaf)) // Folders are treated as writable
     {
         return TRUE;
     }

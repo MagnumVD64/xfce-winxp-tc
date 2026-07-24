@@ -2231,7 +2231,18 @@ static void on_model_row_deleted(
     // FIXME: Free large icon
     //
 
-    gtk_widget_queue_draw(GTK_WIDGET(list_view));
+    if (list_view->auto_arrange)
+    {
+        wintc_ctl_list_view_auto_arrange(
+            list_view,
+            g_sequence_get_iter_at_pos(
+                list_view->seq_icons,
+                idx
+            )
+        );
+    }
+
+    gtk_widget_queue_resize(GTK_WIDGET(list_view));
 }
 
 static void on_model_row_inserted(
@@ -2264,8 +2275,6 @@ static void on_model_row_inserted(
 
     list_view->list_icons =
         g_list_prepend(list_view->list_icons, large_icon);
-
-    WINTC_LOG_DEBUG("Inserting at %d", idx);
 
     // Arrange the icon layout
     //

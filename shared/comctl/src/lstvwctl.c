@@ -87,6 +87,10 @@ static void wintc_ctl_list_view_get_preferred_width_for_height(
 static GtkSizeRequestMode wintc_ctl_list_view_get_request_mode(
     GtkWidget* widget
 );
+static void wintc_ctl_list_view_size_allocate(
+    GtkWidget*     widget,
+    GtkAllocation* allocation
+);
 
 static void wintc_ctl_list_view_auto_arrange(
     WinTCCtlListView* list_view,
@@ -105,6 +109,11 @@ static void wintc_ctl_list_view_emit_item_activated(
     WinTCCtlListView*     list_view,
     WinTCCtlListViewIcon* icon
 );
+static void wintc_ctl_list_view_get_max_icon_pos(
+    WinTCCtlListView* list_view,
+    gint*             x,
+    gint*             y
+);
 static void wintc_ctl_list_view_get_next_icon_pos_for_cell(
     WinTCCtlListView* list_view,
     gint              cell_idx,
@@ -114,6 +123,13 @@ static void wintc_ctl_list_view_get_next_icon_pos_for_cell(
 static GtkTreePath* wintc_ctl_list_view_get_path_for_icon(
     WinTCCtlListView*     list_view,
     WinTCCtlListViewIcon* icon
+);
+static void wintc_ctl_list_view_get_preferred_size(
+    WinTCCtlListView* list_view,
+    GtkOrientation    orientation,
+    gint              provided_size,
+    gint*             minimum_size,
+    gint*             natural_size
 );
 static gboolean wintc_ctl_list_view_has_solid_bg(
     WinTCCtlListView* list_view
@@ -330,6 +346,8 @@ static void wintc_ctl_list_view_class_init(
         wintc_ctl_list_view_get_preferred_width_for_height;
     widget_class->get_request_mode =
         wintc_ctl_list_view_get_request_mode;
+    widget_class->size_allocate =
+        wintc_ctl_list_view_size_allocate;
 
     wintc_ctl_list_view_signals[SIGNAL_ITEM_ACTIVATED] =
         g_signal_new(
@@ -542,11 +560,13 @@ static void wintc_ctl_list_view_get_preferred_height(
     gint*      natural_height
 )
 {
-    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
-
-    *minimum_height = 0;
-    *natural_height =
-        g_sequence_get_length(list_view->seq_icons) * CELL_SIZE_LARGE_ICON;
+    wintc_ctl_list_view_get_preferred_size(
+        WINTC_CTL_LIST_VIEW(widget),
+        GTK_ORIENTATION_VERTICAL,
+        -1,
+        minimum_height,
+        natural_height
+    );
 }
 
 static void wintc_ctl_list_view_get_preferred_height_for_width(
@@ -556,37 +576,44 @@ static void wintc_ctl_list_view_get_preferred_height_for_width(
     gint*      natural_height
 )
 {
-    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
-
-    gint cols = MAX(width / CELL_SIZE_LARGE_ICON, 1);
-    gint rows =
-        ceil((gdouble) g_sequence_get_length(list_view->seq_icons) / cols);
-
-    gdouble required = rows * CELL_SIZE_LARGE_ICON;
-
-    *minimum_height = required;
-    *natural_height = required;
+    wintc_ctl_list_view_get_preferred_size(
+        WINTC_CTL_LIST_VIEW(widget),
+        GTK_ORIENTATION_VERTICAL,
+        width,
+        minimum_height,
+        natural_height
+    );
 }
 
 static void wintc_ctl_list_view_get_preferred_width(
-    WINTC_UNUSED(GtkWidget* widget),
-    gint* minimum_width,
-    gint* natural_width
+    GtkWidget* widget,
+    gint*      minimum_width,
+    gint*      natural_width
 )
 {
-    *minimum_width = 0;
-    *natural_width = CELL_SIZE_LARGE_ICON;
+    wintc_ctl_list_view_get_preferred_size(
+        WINTC_CTL_LIST_VIEW(widget),
+        GTK_ORIENTATION_HORIZONTAL,
+        -1,
+        minimum_width,
+        natural_width
+    );
 }
 
 static void wintc_ctl_list_view_get_preferred_width_for_height(
-    WINTC_UNUSED(GtkWidget* widget),
-    WINTC_UNUSED(gint height),
-    gint* minimum_width,
-    gint* natural_width
+    GtkWidget* widget,
+    gint       height,
+    gint*      minimum_width,
+    gint*      natural_width
 )
 {
-    *minimum_width = 0;
-    *natural_width = CELL_SIZE_LARGE_ICON;
+    wintc_ctl_list_view_get_preferred_size(
+        WINTC_CTL_LIST_VIEW(widget),
+        GTK_ORIENTATION_HORIZONTAL,
+        height,
+        minimum_width,
+        natural_width
+    );
 }
 
 static GtkSizeRequestMode wintc_ctl_list_view_get_request_mode(
@@ -602,6 +629,25 @@ static GtkSizeRequestMode wintc_ctl_list_view_get_request_mode(
     else // GTK_ORIENTATION_VERTICAL
     {
         return GTK_SIZE_REQUEST_WIDTH_FOR_HEIGHT;
+    }
+}
+
+static void wintc_ctl_list_view_size_allocate(
+    GtkWidget*     widget,
+    GtkAllocation* allocation
+)
+{
+    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(widget);
+
+    (GTK_WIDGET_CLASS(wintc_ctl_list_view_parent_class))
+        ->size_allocate(widget, allocation);
+
+    if (list_view->auto_arrange)
+    {
+        wintc_ctl_list_view_auto_arrange(
+            list_view,
+            g_sequence_get_begin_iter(list_view->seq_icons)
+        );
     }
 }
 
@@ -843,9 +889,7 @@ void wintc_ctl_list_view_set_auto_arrange(
 {
     list_view->auto_arrange = auto_arrange;
 
-    //
-    // FIXME: Trigger layout refresh now
-    //
+    gtk_widget_queue_resize(GTK_WIDGET(list_view));
 }
 
 void wintc_ctl_list_view_set_model(
@@ -904,9 +948,7 @@ void wintc_ctl_list_view_set_orientation(
 {
     list_view->orientation = orientation;
 
-    //
-    // FIXME: When auto arrange is implemented, trigger it here
-    //
+    gtk_widget_queue_resize(GTK_WIDGET(list_view));
 }
 
 void wintc_ctl_list_view_set_pixbuf_column(
@@ -1035,7 +1077,16 @@ static void wintc_ctl_list_view_commit_icon_drag(
         large_icon->hitbox_icon.y  += list_view->motion_rect.height;
         large_icon->hitbox_label.x += list_view->motion_rect.width;
         large_icon->hitbox_label.y += list_view->motion_rect.height;
+
+        // Track max icon pos
+        //
+        list_view->itempos_max.x =
+            MAX(list_view->itempos_max.x, large_icon->hitbox_icon.x);
+        list_view->itempos_max.y =
+            MAX(list_view->itempos_max.y, large_icon->hitbox_icon.y);
     }
+
+    gtk_widget_queue_resize(GTK_WIDGET(list_view));
 }
 
 static WinTCCtlListViewIcon* wintc_ctl_list_view_create_large_icon(
@@ -1086,6 +1137,20 @@ static void wintc_ctl_list_view_emit_item_activated(
     );
 
     gtk_tree_path_free(path);
+}
+
+static void wintc_ctl_list_view_get_max_icon_pos(
+    WinTCCtlListView* list_view,
+    gint*             x,
+    gint*             y
+)
+{
+    gint offset =
+        HITBOX_LARGE_ICON +
+        ((CELL_SIZE_LARGE_ICON - HITBOX_LARGE_ICON) / 2);
+
+    WINTC_SAFE_REF_SET(x, list_view->itempos_max.x + offset);
+    WINTC_SAFE_REF_SET(y, list_view->itempos_max.y + offset);
 }
 
 static void wintc_ctl_list_view_get_next_icon_pos_for_cell(
@@ -1140,6 +1205,73 @@ static GtkTreePath* wintc_ctl_list_view_get_path_for_icon(
     gint idx = g_sequence_iter_get_position(iter_seq);
 
     return gtk_tree_path_new_from_indices(idx, -1);
+}
+
+static void wintc_ctl_list_view_get_preferred_size(
+    WinTCCtlListView* list_view,
+    GtkOrientation    orientation,
+    gint              provided_size,
+    gint*             minimum_size,
+    gint*             natural_size
+)
+{
+    gint required;
+
+    //
+    // A bit of clarification for the meaning of 'orientation' as it pertains
+    // to the parameter passed into this function vs. the property of the list
+    // view:
+    //     orientation - horizontal for width, vertical for height
+    //     list_view->orientation - horizontal for populating items LTR/RTL
+    //                              vertical for populating items TTB/BTT
+    //
+    // For the auto-arrange logic, this means that the flexible size (the one
+    // we need to calculate) is in the direction of **wrapping**, which will
+    // always be the opposite to the equivalent dimension
+    //
+    // eg. for a list view in the vertical orientation, it will fill up TTB
+    // then wrap towards the right horizontally (so the height can be shrunk
+    // to the size of 1 item, the width varies depending on wrapping)
+    //
+
+    if (list_view->auto_arrange)
+    {
+        if (list_view->orientation != orientation)
+        {
+            if (provided_size < 0)
+            {
+                required =
+                    g_sequence_get_length(list_view->seq_icons) *
+                    CELL_SIZE_LARGE_ICON;
+            }
+            else
+            {
+                gint cols = MAX(provided_size / CELL_SIZE_LARGE_ICON, 1);
+                gint rows =
+                    ceil(
+                        (gdouble) 
+                        g_sequence_get_length(list_view->seq_icons) / cols
+                    );
+
+                required = rows * CELL_SIZE_LARGE_ICON;
+            }
+        }
+        else
+        {
+            required = CELL_SIZE_LARGE_ICON;
+        }
+    }
+    else
+    {
+        wintc_ctl_list_view_get_max_icon_pos(
+            list_view,
+            orientation == GTK_ORIENTATION_HORIZONTAL ? &required : NULL,
+            orientation == GTK_ORIENTATION_VERTICAL   ? &required : NULL
+        );
+    }
+
+    *minimum_size = required;
+    *natural_size = required;
 }
 
 static gboolean wintc_ctl_list_view_has_solid_bg(
@@ -2043,23 +2175,6 @@ static void on_model_row_changed(
     wintc_ctl_list_view_update_icon(list_view, large_icon, iter);
 
     gtk_widget_queue_draw(GTK_WIDGET(list_view));
-
-    /**
-    large_icon->icon =
-        gtk_icon_theme_load_icon(
-            gtk_icon_theme_get_default(),
-            icon_name,
-            32,
-            GTK_ICON_LOOKUP_FORCE_SIZE,
-            NULL
-        );
-
-    wintc_ctl_list_view_set_icon_text(
-        list_view,
-        large_icon,
-        text
-    );
-    */
 }
 
 static void on_model_row_deleted(
@@ -2151,11 +2266,21 @@ static void on_model_row_inserted(
         }
         else
         {
+            gint target_x;
+            gint target_y;
+
             wintc_ctl_list_view_get_next_icon_pos_for_cell(
                 list_view,
                 list_view->itempos_count,
-                &(large_icon->hitbox_icon.x),
-                &(large_icon->hitbox_icon.y)
+                &target_x,
+                &target_y
+            );
+
+            wintc_ctl_list_view_move_icon(
+                list_view,
+                large_icon,
+                target_x,
+                target_y
             );
         }
 

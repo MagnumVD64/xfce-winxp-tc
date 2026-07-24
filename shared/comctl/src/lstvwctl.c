@@ -1423,10 +1423,24 @@ static void wintc_ctl_list_view_render_large_icon(
 
     // If the icon is selected, it needs the highlight
     //
+    GdkRGBA selected_color;
+
+    gtk_style_context_lookup_color(
+        gtk_widget_get_style_context(GTK_WIDGET(list_view)),
+        "theme_selected_bg_color",
+        &selected_color
+    );
+
     if (style == WINTC_CTL_LIST_VIEW_ICON_STYLE_SELECTED)
     {
         cairo_save(cr);
-        cairo_set_source_rgba(cr, 0.0f, 0.0f, 0.8f, 0.5f);
+        cairo_set_source_rgba(
+            cr,
+            selected_color.red,
+            selected_color.green,
+            selected_color.blue,
+            0.5f
+        );
         cairo_mask_surface(
             cr,
             surface_icon,
@@ -1479,7 +1493,13 @@ static void wintc_ctl_list_view_render_large_icon(
             (gdouble) large_icon->hitbox_label.height
         );
         cairo_clip(cr);
-        cairo_set_source_rgba(cr, 0.0f, 0.0f, 0.4f, alpha);
+        cairo_set_source_rgba(
+            cr,
+            selected_color.red,
+            selected_color.green,
+            selected_color.blue,
+            alpha
+        );
         cairo_paint(cr);
 
         cairo_set_source_rgba(cr, 1.0f, 1.0f, 1.0f, alpha);

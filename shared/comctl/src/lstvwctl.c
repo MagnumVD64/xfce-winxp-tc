@@ -302,7 +302,6 @@ struct _WinTCCtlListView
     gboolean              hit_in_widget;
 
     WinTCCtlListViewIcon* hit_icon_last;
-    guint32               hit_time_last;
 
     // DND stuff
     //
@@ -1809,9 +1808,9 @@ static gboolean on_list_view_button_press_event(
     // Check for potential double-click
     //
     if (
+        e->type == GDK_2BUTTON_PRESS &&
         list_view->hit_icon &&
-        list_view->hit_icon == list_view->hit_icon_last &&
-        e->time - list_view->hit_time_last < 200
+        list_view->hit_icon == list_view->hit_icon_last
     )
     {
         wintc_ctl_list_view_emit_item_activated(
@@ -1819,12 +1818,9 @@ static gboolean on_list_view_button_press_event(
             list_view->hit_icon
         );
 
-        list_view->hit_icon_last = NULL;
-        list_view->hit_time_last = G_MAXUINT32;
-    }
-    else
-    {
-        list_view->hit_time_last = e->time;
+        wintc_ctl_list_view_reset_hit_state(list_view);
+
+        return TRUE;
     }
 
     // Update the selection state for whether we hit the icon or not

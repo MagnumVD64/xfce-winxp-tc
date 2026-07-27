@@ -140,6 +140,11 @@ static WinTCCtlListViewIcon* wintc_ctl_list_view_hit_test(
     gint              y,
     gboolean*         hit_label
 );
+static void wintc_ctl_list_view_insert_icon(
+    WinTCCtlListView*     list_view,
+    WinTCCtlListViewIcon* icon,
+    gint                  idx
+);
 static void wintc_ctl_list_view_move_icon(
     WinTCCtlListView*     list_view,
     WinTCCtlListViewIcon* icon,
@@ -283,6 +288,7 @@ struct _WinTCCtlListView
     gulong sigid_row_changed;
     gulong sigid_row_deleted;
     gulong sigid_row_inserted;
+    gulong sigid_rows_reordered;
 
     // Item positioning
     //
@@ -896,11 +902,47 @@ void wintc_ctl_list_view_set_model(
     GtkTreeModel*     model
 )
 {
+    // Detach from model
     //
-    // FIXME: Unset existing model
-    //
+    if (list_view->model)
+    {
+        g_signal_handler_disconnect(
+            list_view->model,
+            list_view->sigid_row_changed
+        );
+        g_signal_handler_disconnect(
+            list_view->model,
+            list_view->sigid_row_deleted
+        );
+        g_signal_handler_disconnect(
+            list_view->model,
+            list_view->sigid_row_inserted
+        );
+        g_signal_handler_disconnect(
+            list_view->model,
+            list_view->sigid_rows_reordered
+        );
 
+        list_view->sigid_row_changed    = 0;
+        list_view->sigid_row_deleted    = 0;
+        list_view->sigid_row_inserted   = 0;
+        list_view->sigid_rows_reordered = 0;
+
+        // Erase all rows
+        //
+        g_clear_list(&(list_view->list_selected), NULL);
+        g_clear_list(&(list_view->list_icons),    NULL);
+        g_sequence_free(list_view->seq_icons);
+    }
+
+    // Attach to new model
+    //
     list_view->model = model;
+
+    if (!model)
+    {
+        goto done;
+    }
 
     list_view->sigid_row_changed =
         g_signal_connect_object(
@@ -926,7 +968,7 @@ void wintc_ctl_list_view_set_model(
             list_view,
             G_CONNECT_DEFAULT
         );
-    list_view->sigid_row_inserted =
+    list_view->sigid_rows_reordered =
         g_signal_connect_object(
             list_view->model,
             "rows-reordered",
@@ -935,9 +977,52 @@ void wintc_ctl_list_view_set_model(
             G_CONNECT_DEFAULT
         );
 
+    // Create items for new model
     //
-    // FIXME: Iterate over model
-    //
+    gint        idx   = 0;
+    GtkTreeIter iter;
+    gboolean    valid =
+        gtk_tree_model_get_iter_first(GTK_TREE_MODEL(model), &iter);
+
+    while (valid)
+    {
+        WinTCCtlListViewIcon* icon =
+            wintc_ctl_list_view_create_large_icon(list_view);
+
+        GdkPixbuf* pixbuf;
+        gchar*     text;
+
+        gtk_tree_model_get(
+            GTK_TREE_MODEL(model),
+            &iter,
+            list_view->col_pixbuf, &pixbuf,
+            list_view->col_text,   &text,
+            -1
+        );
+
+        wintc_ctl_list_view_set_icon_pixbuf(
+            list_view,
+            icon,
+            pixbuf
+        );
+        wintc_ctl_list_view_set_icon_text(
+            list_view,
+            icon,
+            text
+        );
+
+        wintc_ctl_list_view_insert_icon(
+            list_view,
+            icon,
+            idx
+        );
+
+        idx++;
+        valid = gtk_tree_model_iter_next(model, &iter);
+    }
+
+done:
+    gtk_widget_queue_resize(GTK_WIDGET(list_view));
 }
 
 void wintc_ctl_list_view_set_orientation(
@@ -957,9 +1042,38 @@ void wintc_ctl_list_view_set_pixbuf_column(
 {
     list_view->col_pixbuf = column;
 
+    if (!(list_view->model))
+    {
+        return;
+    }
+
+    // Update from model
     //
-    // FIXME: Update existing icons now
-    //
+    GtkTreeIter    iter;
+    GSequenceIter* iter_seq = g_sequence_get_begin_iter(list_view->seq_icons);
+    gboolean       valid =
+        gtk_tree_model_get_iter_first(list_view->model, &iter);
+
+    while (valid)
+    {
+        WinTCCtlListViewIcon* icon = g_sequence_get(iter_seq);
+        GdkPixbuf*            pixbuf;
+
+        gtk_tree_model_get(
+            list_view->model,
+            &iter,
+            list_view->col_pixbuf, &pixbuf,
+            -1
+        );
+
+        wintc_ctl_list_view_set_icon_pixbuf(
+            list_view,
+            icon,
+            pixbuf
+        );
+
+        valid = gtk_tree_model_iter_next(list_view->model, &iter);
+    }
 }
 
 void wintc_ctl_list_view_set_text_column(
@@ -969,9 +1083,38 @@ void wintc_ctl_list_view_set_text_column(
 {
     list_view->col_text = column;
 
+    if (!(list_view->model))
+    {
+        return;
+    }
+
+    // Update from model
     //
-    // FIXME: Update existing icons now
-    //
+    GtkTreeIter    iter;
+    GSequenceIter* iter_seq = g_sequence_get_begin_iter(list_view->seq_icons);
+    gboolean       valid =
+        gtk_tree_model_get_iter_first(list_view->model, &iter);
+
+    while (valid)
+    {
+        WinTCCtlListViewIcon* icon = g_sequence_get(iter_seq);
+        gchar*                text;
+
+        gtk_tree_model_get(
+            list_view->model,
+            &iter,
+            list_view->col_text, &text,
+            -1
+        );
+
+        wintc_ctl_list_view_set_icon_text(
+            list_view,
+            icon,
+            text
+        );
+
+        valid = gtk_tree_model_iter_next(list_view->model, &iter);
+    }
 }
 
 gboolean wintc_ctl_list_view_should_ignore_drop(
@@ -1345,6 +1488,62 @@ static WinTCCtlListViewIcon* wintc_ctl_list_view_hit_test(
     }
 
     return NULL;
+}
+
+static void wintc_ctl_list_view_insert_icon(
+    WinTCCtlListView*     list_view,
+    WinTCCtlListViewIcon* icon,
+    gint                  idx
+)
+{
+    // Insert into our collections
+    //
+    GSequenceIter* iter_seq =
+        g_sequence_get_iter_at_pos(list_view->seq_icons, idx);
+
+    iter_seq =
+        g_sequence_insert_before(iter_seq, icon);
+
+    list_view->list_icons =
+        g_list_prepend(list_view->list_icons, icon);
+
+    // Arrange the icon layout
+    //
+    icon->realize_idx = list_view->itempos_count;
+
+    if (gtk_widget_get_realized(GTK_WIDGET(list_view)))
+    {
+        if (list_view->auto_arrange)
+        {
+            wintc_ctl_list_view_auto_arrange(
+                list_view,
+                iter_seq
+            );
+        }
+        else
+        {
+            gint target_x;
+            gint target_y;
+
+            wintc_ctl_list_view_get_next_icon_pos_for_cell(
+                list_view,
+                list_view->itempos_count,
+                &target_x,
+                &target_y
+            );
+
+            wintc_ctl_list_view_move_icon(
+                list_view,
+                icon,
+                target_x,
+                target_y
+            );
+        }
+
+        icon->realize_idx = -1;
+    }
+
+    list_view->itempos_count++;
 }
 
 static void wintc_ctl_list_view_move_icon(
@@ -2273,55 +2472,11 @@ static void on_model_row_inserted(
     WinTCCtlListViewIcon* large_icon =
         wintc_ctl_list_view_create_large_icon(list_view);
 
-    // Insert into our collections
-    //
-    gint           idx      = gtk_tree_path_get_indices(path)[0];
-    GSequenceIter* iter_seq =
-        g_sequence_get_iter_at_pos(list_view->seq_icons, idx);
-
-    iter_seq =
-        g_sequence_insert_before(iter_seq, large_icon);
-
-    list_view->list_icons =
-        g_list_prepend(list_view->list_icons, large_icon);
-
-    // Arrange the icon layout
-    //
-    large_icon->realize_idx = list_view->itempos_count;
-
-    if (gtk_widget_get_realized(GTK_WIDGET(list_view)))
-    {
-        if (list_view->auto_arrange)
-        {
-            wintc_ctl_list_view_auto_arrange(
-                list_view,
-                iter_seq
-            );
-        }
-        else
-        {
-            gint target_x;
-            gint target_y;
-
-            wintc_ctl_list_view_get_next_icon_pos_for_cell(
-                list_view,
-                list_view->itempos_count,
-                &target_x,
-                &target_y
-            );
-
-            wintc_ctl_list_view_move_icon(
-                list_view,
-                large_icon,
-                target_x,
-                target_y
-            );
-        }
-
-        large_icon->realize_idx = -1;
-    }
-
-    list_view->itempos_count++;
+    wintc_ctl_list_view_insert_icon(
+        list_view,
+        large_icon,
+        gtk_tree_path_get_indices(path)[0]
+    );
 
     gtk_widget_queue_draw(GTK_WIDGET(list_view));
 }

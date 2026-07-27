@@ -58,6 +58,10 @@ typedef struct _WinTCCtlListViewIcon
 //
 // FORWARD DECLARATIONS
 //
+static void wintc_ctl_list_view_dispose(
+    GObject* object
+);
+
 static gboolean wintc_ctl_list_view_draw(
     GtkWidget* widget,
     cairo_t*   cr
@@ -184,6 +188,11 @@ static void wintc_ctl_list_view_update_icon(
     WinTCCtlListViewIcon* icon,
     GtkTreeIter*          iter
 );
+
+static void wintc_ctl_list_view_icon_free(
+    WinTCCtlListViewIcon* icon
+);
+
 static void on_list_view_drag_end(
     GtkWidget*      widget,
     GdkDragContext* context,
@@ -340,6 +349,8 @@ static void wintc_ctl_list_view_class_init(
     GObjectClass*   object_class = G_OBJECT_CLASS(klass);
     GtkWidgetClass* widget_class = GTK_WIDGET_CLASS(klass);
 
+    object_class->dispose = wintc_ctl_list_view_dispose;
+
     widget_class->draw = wintc_ctl_list_view_draw;
     widget_class->get_preferred_height =
         wintc_ctl_list_view_get_preferred_height;
@@ -377,7 +388,6 @@ static void wintc_ctl_list_view_init(
 {
     self->col_pixbuf = -1;
     self->col_text   = -1;
-    self->seq_icons  = g_sequence_new(NULL);
     self->solid_bg   = TRUE;
 
     gtk_widget_add_events(
@@ -451,6 +461,18 @@ static void wintc_ctl_list_view_init(
 //
 // CLASS VIRTUAL METHODS
 //
+static void wintc_ctl_list_view_dispose(
+    GObject* object
+)
+{
+    WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(object);
+
+    wintc_ctl_list_view_set_model(list_view, NULL);
+
+    (G_OBJECT_CLASS(wintc_ctl_list_view_parent_class))
+        ->dispose(object);
+}
+
 static gboolean wintc_ctl_list_view_draw(
     GtkWidget* widget,
     cairo_t*   cr
@@ -931,8 +953,12 @@ void wintc_ctl_list_view_set_model(
         // Erase all rows
         //
         g_clear_list(&(list_view->list_selected), NULL);
-        g_clear_list(&(list_view->list_icons),    NULL);
         g_sequence_free(list_view->seq_icons);
+
+        g_clear_list(
+            &(list_view->list_icons),
+            (GDestroyNotify) wintc_ctl_list_view_icon_free
+        );
     }
 
     // Attach to new model
@@ -943,6 +969,8 @@ void wintc_ctl_list_view_set_model(
     {
         goto done;
     }
+
+    list_view->seq_icons = g_sequence_new(NULL);
 
     list_view->sigid_row_changed =
         g_signal_connect_object(
@@ -1973,6 +2001,21 @@ static void wintc_ctl_list_view_update_icon(
     }
 }
 
+static void wintc_ctl_list_view_icon_free(
+    WinTCCtlListViewIcon* icon
+)
+{
+    g_object_unref(icon->icon);
+    g_free(icon->text);
+
+    if (icon->surface_text_shadow)
+    {
+        cairo_surface_destroy(icon->surface_text_shadow);
+    }
+
+    g_free(icon);
+}
+
 //
 // CALLBACKS
 //
@@ -2435,9 +2478,7 @@ static void on_model_row_deleted(
             g_list_delete_link(list_view->list_selected, el_selected);
     }
 
-    //
-    // FIXME: Free large icon
-    //
+    wintc_ctl_list_view_icon_free(large_icon);
 
     if (list_view->auto_arrange)
     {

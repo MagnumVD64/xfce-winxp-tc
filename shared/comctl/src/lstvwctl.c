@@ -468,6 +468,8 @@ static void wintc_ctl_list_view_dispose(
     WinTCCtlListView* list_view = WINTC_CTL_LIST_VIEW(object);
 
     wintc_ctl_list_view_set_model(list_view, NULL);
+    wintc_ctl_list_view_unset_drag_dest(list_view);
+    wintc_ctl_list_view_unset_drag_source(list_view);
 
     (G_OBJECT_CLASS(wintc_ctl_list_view_parent_class))
         ->dispose(object);

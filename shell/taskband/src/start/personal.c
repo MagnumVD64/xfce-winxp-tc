@@ -225,11 +225,11 @@ void create_personal_menu(
 
     gtk_label_set_text(
         GTK_LABEL(gtk_builder_get_object(builder, "label-username-horz")),
-        user_pwd->pw_name
+        user_pwd->pw_gecos
     );
     gtk_label_set_text(
         GTK_LABEL(gtk_builder_get_object(builder, "label-username-vert")),
-        user_pwd->pw_name
+        user_pwd->pw_gecos
     );
 
     // Attach Recent Documents submenu

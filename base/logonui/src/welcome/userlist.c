@@ -28,6 +28,7 @@ typedef struct _UserListItem
     WinTCWelcomeUserList* parent; 
 
     gchar*       name;
+    gchar*  real_name;
     LightDMUser* user;
 
     // UI state
@@ -525,6 +526,7 @@ static GtkWidget* build_userlist_widget(
 
         item->user     = (LightDMUser*) l->data; 
         item->name     = g_strdup(lightdm_user_get_name(item->user));
+        item->real_name = g_strdup(lightdm_user_get_real_name(item->user));
         item->parent   = user_list; 
         item->faded    = FALSE;
 
@@ -603,7 +605,7 @@ static GtkWidget* build_userlist_widget(
         );
         gtk_label_set_text(
             GTK_LABEL(item->username_label),
-            item->name
+            item->real_name
         );
 
         g_object_unref(profile_image);

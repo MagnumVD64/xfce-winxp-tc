@@ -183,6 +183,13 @@ static void on_realize_enable_passthrough(
     gpointer   user_data
 );
 
+static const gchar* get_display_name(UserListItem* item)
+{
+    if (item->real_name && item->real_name[0] != '\0')
+        return item->real_name;
+    return item->name ? item->name : "";
+}
+
 //
 // GTK OOP CLASS/INSTANCE DEFINITIONS
 //
@@ -605,7 +612,7 @@ static GtkWidget* build_userlist_widget(
         );
         gtk_label_set_text(
             GTK_LABEL(item->username_label),
-            item->real_name
+            get_display_name(item)
         );
 
         g_object_unref(profile_image);

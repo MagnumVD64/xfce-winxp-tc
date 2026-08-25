@@ -81,6 +81,7 @@ target_link_directories(
 
 target_link_libraries(
     libwintc-comctl
+    PRIVATE m
     PRIVATE ${GDK_PIXBUF_LIBRARIES}
     PRIVATE ${GLIB_LIBRARIES}
     PRIVATE ${GTK3_LIBRARIES}
